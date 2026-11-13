@@ -6,9 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <limits>
 #include <new>
-#include <stdexcept>
 
 #include "ref.hpp"
 #include "errors.hpp"
@@ -37,20 +35,46 @@ private:
      * control block. The block is moved with `memmove` when reallocation
      * changes its alignment; its members must therefore remain trivially
      * copyable.
+     *
+     * Members are ordered so that aligning the 64-byte buffer also aligns
+     * the control block, without requiring the block itself to be 64-byte
+     * aligned.
      */
     struct ControlBlock
     {
         /** @brief Required alignment of the buffer data in bytes. */
         static constexpr int32_t alignment = 64;
+        /** @brief Maximum capacity of one allocation in bytes. */
+        static constexpr int32_t maximumCapacity = 1024 * 1024 * 1024;
+        /** @brief Buffer offset from the control block, based on the member layout. */
+        static constexpr int32_t bufferOffset =
+            static_cast<int32_t>(sizeof(void*) + 4 * sizeof(int32_t));
+
+        static int32_t requestedCapacity(int32_t size, int32_t preallocateSize)
+        {
+            CUCUT_ASSERT(size >= 0, "Size cannot be negative. It is %d.", size);
+            CUCUT_ASSERT(preallocateSize >= 0, "Preallocation size cannot be negative. It is %d.", preallocateSize);
+
+            if (preallocateSize > maximumCapacity
+                || size > maximumCapacity - preallocateSize) {
+                fatalError("Requested Buffer allocation is too large.");
+            }
+            return size + preallocateSize;
+        }
+
+        static int32_t requiredAllocationSize(int32_t capacity)
+        {
+            return bufferOffset + capacity + alignment - 1;
+        }
 
         /** @brief Original pointer passed to the allocator. */
         void* allocatedPointer;
+        /** @brief Reserved; currently unused. */
+        int32_t _reserved;
         /** @brief Available capacity in bytes starting at `buffer`. */
         int32_t allocatedSize;
         /** @brief Number of Buffer instances sharing this allocation. */
         RefCounter refs;
-        /** @brief Reserved; currently unused. */
-        int32_t _reserved;
         /** @brief Logical size of the buffer in bytes. */
         int32_t size;
         /** @brief Buffer data, aligned to `alignment`. */
@@ -69,17 +93,15 @@ private:
          */
         static ControlBlock* alloc(int32_t newSize, int32_t preallocateSize)
         {
-            CUCUT_ASSERT(newSize >= 0, "Size cannot be negative. It is %d.", newSize);
-
-            auto requiredSize = (int32_t)offsetof(ControlBlock, buffer) + newSize + alignment - 1 + preallocateSize;
+            auto requiredSize = requiredAllocationSize(requestedCapacity(newSize, preallocateSize));
             uint8_t* ptr = (uint8_t*)std::malloc(requiredSize);
             if (!ptr) {
                 fatalError("Out of memory when allocating buffer.");
             }
             uintptr_t cbAddress = (uintptr_t)ptr;
-            uintptr_t bufferAddress = cbAddress + offsetof(ControlBlock, buffer);
-            int32_t allocatedSize = requiredSize - offsetof(ControlBlock, buffer);
-            int32_t misalignment = bufferAddress & (alignment - 1);
+            uintptr_t bufferAddress = cbAddress + bufferOffset;
+            int32_t allocatedSize = requiredSize - bufferOffset;
+            int32_t misalignment = static_cast<int32_t>(bufferAddress & (alignment - 1));
             if (misalignment != 0) {
                 cbAddress += alignment - misalignment;
                 bufferAddress += alignment - misalignment;
@@ -111,26 +133,28 @@ private:
         static ControlBlock* realloc(ControlBlock* cbOld, int32_t newSize, bool copyContent)
         {
             CUCUT_ASSERT(cbOld != nullptr, "NULL pointer access");
-            CUCUT_ASSERT(newSize >= 0, "Size cannot be negative. It is %d.", newSize);
             CUCUT_ASSERT(cbOld->refs.valid(), "Operation on reallocated or corrupted memory");
-
-            auto requiredSize = (int32_t)offsetof(ControlBlock, buffer) + newSize + alignment - 1;
+            CUCUT_ASSERT(newSize >= 0, "Size cannot be negative. It is %d.", newSize);
+            if (newSize > maximumCapacity) {
+                fatalError("Requested Buffer allocation is too large.");
+            }
+            auto requiredSize = requiredAllocationSize(newSize);
             uint8_t* ptrOld = (uint8_t*)cbOld->allocatedPointer;
+            int32_t oldAdjustment = static_cast<int32_t>((uintptr_t)cbOld - (uintptr_t)ptrOld);
+            int32_t oldSize = cbOld->size;
             uint8_t* ptr = (uint8_t*)std::realloc(ptrOld, requiredSize);
             if (!ptr) {
                 // No memory - fatal error
                 fatalError("Out of memory when allocating buffer.");
             } else if (ptr == ptrOld) {
                 // The same pointer - just update fields
-                cbOld->allocatedSize = requiredSize - offsetof(ControlBlock, buffer);
-                cbOld->size = newSize;
+                cbOld->allocatedSize = requiredSize - bufferOffset - oldAdjustment;
                 return cbOld;
             }
 
-            int32_t oldAdjustment = (uintptr_t)cbOld - (uintptr_t)cbOld->allocatedPointer;
             uintptr_t cbAddress = (uintptr_t)ptr;
-            uintptr_t bufferAddress = cbAddress + offsetof(ControlBlock, buffer);
-            int32_t misalignment = bufferAddress & (alignment - 1);
+            uintptr_t bufferAddress = cbAddress + bufferOffset;
+            int32_t misalignment = static_cast<int32_t>(bufferAddress & (alignment - 1));
             int32_t newAdjustment = 0;
             if (misalignment != 0) {
                 newAdjustment = alignment - misalignment;
@@ -140,16 +164,12 @@ private:
 
             if (newAdjustment != oldAdjustment) {
                 // Different adjustment - calculate old location and do memmove
-                ControlBlock* cbOld = (ControlBlock*)((uint8_t*)ptr + oldAdjustment);
-                int32_t copyBytes = copyContent
-                    ? std::min(cbOld->size, newSize)
-                    : 0;
-                std::memmove(cbNew, cbOld, offsetof(ControlBlock, buffer) + copyBytes);
+                int32_t copyBytes = copyContent ? std::min(oldSize, newSize) : 0;
+                std::memmove(cbNew, ptr + oldAdjustment, bufferOffset + copyBytes);
             }
 
             cbNew->allocatedPointer = ptr;
-            cbNew->allocatedSize = requiredSize - offsetof(ControlBlock, buffer) - newAdjustment;
-            cbNew->size = newSize;
+            cbNew->allocatedSize = requiredSize - bufferOffset - newAdjustment;
             return cbNew;
         }
 
@@ -161,7 +181,9 @@ private:
         static ControlBlock* get(void* buffer)
         {
             CUCUT_ASSERT(buffer != nullptr, "NULL pointer access");
-            auto cb = reinterpret_cast<ControlBlock*>(buffer - offsetof(ControlBlock, buffer));
+            uintptr_t bufferAddress = reinterpret_cast<uintptr_t>(buffer);
+            CUCUT_ASSERT(bufferAddress >= bufferOffset, "Invalid Buffer pointer.");
+            auto cb = reinterpret_cast<ControlBlock*>(bufferAddress - bufferOffset);
             CUCUT_ASSERT(cb->refs.valid(), "Operation on reallocated or corrupted memory");
             return cb;
         }
@@ -177,8 +199,9 @@ private:
             CUCUT_ASSERT(cb != nullptr, "NULL pointer access");
             CUCUT_ASSERT(cb->refs.valid(), "Operation on reallocated or corrupted memory");
 
+            void* allocatedPointer = cb->allocatedPointer;
             cb->~ControlBlock();
-            std::free(cb->allocatedPointer);
+            std::free(allocatedPointer);
         }
 
         /** @brief Set the logical size of an allocation.
@@ -206,8 +229,9 @@ private:
          */
         static ControlBlock* resize(ControlBlock* cb, int32_t newSize, int32_t preallocateSize, bool grow, bool copyContent)
         {
-            CUCUT_ASSERT(newSize >= 0, "Invalid size %d.", newSize);
-            CUCUT_ASSERT(preallocateSize >= 0, "Invalid preallocate size %d.", newSize);
+            CUCUT_ASSERT(newSize >= 0, "Size cannot be negative. It is %d.", newSize);
+            CUCUT_ASSERT(preallocateSize >= 0, "Preallocation size cannot be negative. It is %d.", preallocateSize);
+            int32_t requestedSize = requestedCapacity(newSize, preallocateSize);
             CUCUT_ASSERT(cb != nullptr, "NULL pointer access");
             CUCUT_ASSERT(cb->refs.valid(), "Operation on reallocated or corrupted memory");
 
@@ -224,17 +248,15 @@ private:
             }
 
             if (newSize <= cb->allocatedSize) {
-                int32_t rangeMin = grow
-                    ? 0
-                    : cb->allocatedSize - 2 * alignment - preallocateSize;
-
-                if (rangeMin <= newSize) {
+                int32_t excessCapacity = cb->allocatedSize - newSize;
+                int32_t shrinkThreshold = 2 * alignment + preallocateSize;
+                if (grow || excessCapacity <= shrinkThreshold) {
                     cb->size = newSize;
                     return cb;
                 }
             }
 
-            auto cbNew = realloc(cb, newSize + preallocateSize, copyContent);
+            auto cbNew = realloc(cb, requestedSize, copyContent);
             cbNew->size = newSize;
 
             return cbNew;
@@ -265,6 +287,19 @@ private:
         }
 
     };
+
+    static_assert(offsetof(ControlBlock, allocatedPointer) % alignof(void*) == 0,
+        "ControlBlock pointer member must be aligned");
+    static_assert(offsetof(ControlBlock, allocatedSize) % alignof(int32_t) == 0,
+        "ControlBlock capacity member must be aligned");
+    static_assert(offsetof(ControlBlock, refs) % alignof(RefCounter) == 0,
+        "ControlBlock reference counter must be aligned");
+    static_assert(offsetof(ControlBlock, size) % alignof(int32_t) == 0,
+        "ControlBlock size member must be aligned");
+    static_assert(offsetof(ControlBlock, buffer) == ControlBlock::bufferOffset,
+        "ControlBlock members must remain packed before the buffer");
+    static_assert(offsetof(ControlBlock, buffer) % alignof(ControlBlock) == 0,
+        "Aligning buffer must also align ControlBlock");
 
 
     /** @brief Data pointer, or null in a moved-from Buffer. */
@@ -362,7 +397,7 @@ public:
      *
      * This operation requires a Buffer that has not been moved from.
      */
-    uint32_t size() const
+    int32_t size() const
     {
         CUCUT_ASSERT(buffer, "Null pointer operation!");
         return ControlBlock::get(buffer)->size;
@@ -404,8 +439,9 @@ public:
      */
     void grow(int32_t newSize, bool keepContent = true)
     {
+        CUCUT_ASSERT(newSize >= 0, "Size cannot be negative. It is %d.", newSize);
         auto cb = ControlBlock::get(buffer);
-        auto cbNew = ControlBlock::resize(cb, newSize, 64 + newSize / 4, true, keepContent);
+        auto cbNew = ControlBlock::resize(cb, newSize, ControlBlock::alignment + newSize / 4, true, keepContent);
         buffer = cbNew->buffer;
     }
 

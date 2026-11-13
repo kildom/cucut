@@ -23,7 +23,10 @@ applyTo: "**/*.cpp, **/*.hpp"
 - Prefer `constexpr`, `constexpr if`, and `inline` as appropriate for compile-time and performance-sensitive code.
 - Avoid unnecessary global state and mutable singletons unless there is a strong architectural reason.
 - Favor composition over inheritance when a simple data-oriented design is enough.
+- The total memory available for the program will not be greaten than 1 GB, so 32-bits for sizes, offsets, indexes is enough.
+- The program will be running on both 64 and 32-bit architectures: x86, x86_64, arm64 and WebAssembly.
 - Prefer signed integer `int32_t` for sizes, offsets, indexes like in Java to avoid overflow errors near the zero; add appropriate asserts or runtime checks for negative values instead of replacing signed type by unsigned; document that variable od parameter cannot be negative.
+- Avoid using `size_t`; prefer signed integer `int32_t`.
 - Validate assumptions explicitly, especially around indexes, ranges, and external inputs using:
   - `CUCUT_ASSERT` if value comes from internal source and the caller/assigner is responsible for providing valid value.
   - normal `if` with error value return if value comes from external input or the caller/assigner may provide invalid value.
