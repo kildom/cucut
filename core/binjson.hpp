@@ -1,6 +1,8 @@
 #ifndef BINJSON_HPP
 #define BINJSON_HPP
 
+#if 0 // TODO: Implement
+
 #include <stdint.h>
 #include <string>
 #include <limits>
@@ -86,5 +88,6 @@ public:
     virtual std::shared_ptr<BinJSONObject> getObject() { return std::make_shared<BinJSONObject>(); }
 }
 
+#endif
 
 #endif // BINJSON_HPP
