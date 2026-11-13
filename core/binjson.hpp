@@ -26,7 +26,7 @@ public:
 
     virtual BinJSONType:T getType() = 0;
     virtual bool isNull() { return false; }
-    virtual Buffer buffer() { return new Buffer(0); }
+    virtual Buffer buffer() { return Buffer(0); }
     virtual double number() { return std::numeric_limits<double>::quiet_NaN(); }
     virtual std::string& string() { static std::string empty; return empty; }
     virtual int length() { return 0; }
