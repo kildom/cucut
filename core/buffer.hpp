@@ -78,7 +78,7 @@ private:
         /** @brief Logical size of the buffer in bytes. */
         int32_t size;
         /** @brief Buffer data, aligned to `alignment`. */
-        uint8_t buffer[];
+        uint8_t buffer[1];
 
         /** @brief Allocate a buffer and initialize its control block.
          *
