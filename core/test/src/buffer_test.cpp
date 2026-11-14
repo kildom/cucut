@@ -2,6 +2,8 @@
 
 namespace buffer_test {
 
+#include "fatal_error_to_exception.hpp"
+
 #include "buffer.hpp"
 
 // Tests default construction. It should allocate a non-null empty buffer
@@ -52,14 +54,14 @@ TEST(BufferTest, ZeroSizedConstructionAndResizeRemainUsable)
 }
 
 // Tests the maximum allocation limit. Requests exceeding it, including an
-// overflowing size-plus-preallocation sum, should terminate through fatalError.
-TEST(BufferTest, AllocationRequestsAboveMaximumCapacityDie)
+// overflowing size-plus-preallocation sum, should throw FatalErrorException.
+TEST(BufferTest, AllocationRequestsAboveMaximumCapacityThrowFatalError)
 {
     constexpr int32_t maximumCapacity = 1024 * 1024 * 1024;
 
-    EXPECT_DEATH({ Buffer tooLarge(maximumCapacity + 1); }, "");
-    EXPECT_DEATH({ Buffer tooMuchPreallocation(0, maximumCapacity + 1); }, "");
-    EXPECT_DEATH({ Buffer overflowingCapacity(1, maximumCapacity); }, "");
+    EXPECT_THROW({ Buffer tooLarge(maximumCapacity + 1); }, FatalErrorException);
+    EXPECT_THROW({ Buffer tooMuchPreallocation(0, maximumCapacity + 1); }, FatalErrorException);
+    EXPECT_THROW({ Buffer overflowingCapacity(1, maximumCapacity); }, FatalErrorException);
 }
 
 // Tests growth within reserved capacity. The logical size should increase

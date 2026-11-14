@@ -24,7 +24,7 @@ all: $(TEST_BINARY)
 run: $(TEST_BINARY)
 	./$(TEST_BINARY)
 
-$(TEST_BINARY): $(TEST_SOURCES) ../binjson.cpp ../binjson.hpp ../buffer.hpp ../errors.hpp ../ref.hpp | build
+$(TEST_BINARY): $(TEST_SOURCES) src/includes.hpp src/fatal_error_to_exception.hpp ../binjson.cpp ../binjson.hpp ../buffer.hpp ../errors.hpp ../ref.hpp | build
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 build:

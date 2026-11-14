@@ -1,7 +1,11 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include <algorithm>
+#include <cstdlib>
 #include <cstring>
+#include <new>
+#include <stdexcept>
 #include <utility>
 #include <array>
 #include <cstddef>
