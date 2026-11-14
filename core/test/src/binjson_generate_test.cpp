@@ -53,6 +53,11 @@ TEST(BinJSONGenerateTest, GeneratesNull)
     expectGenerated(BinJSON::from(nullptr), {0});
 }
 
+TEST(BinJSONGenerateTest, GeneratesErrorAsNull)
+{
+    expectGenerated(std::make_shared<BinJSON::Error>("generation failed"), {0});
+}
+
 TEST(BinJSONGenerateTest, GeneratesBinaryAndStoresItsBuffer)
 {
     Buffer source(3);
@@ -92,11 +97,12 @@ TEST(BinJSONGenerateTest, GeneratesArrayWithNestedValues)
 {
     std::vector<std::shared_ptr<BinJSON::Value>> entries{
         BinJSON::from(nullptr),
+        std::make_shared<BinJSON::Error>("nested error"),
         BinJSON::from(7.0),
         BinJSON::from(std::string("ok")),
     };
 
-    std::vector<uint8_t> payload{0, 2};
+    std::vector<uint8_t> payload{0, 0, 2};
     appendDouble(payload, 7.0);
     payload.push_back(3);
     appendUint32(payload, 2);

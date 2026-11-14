@@ -33,6 +33,8 @@ enum class BinJSONType : std::uint8_t {
     ARRAY = 4,
     /** String-keyed collection of values. */
     OBJECT = 5,
+    /** Internal error value; it has no representation in the binJSON format. */
+    ERROR = 6,
 };
 
 class Array;
@@ -58,6 +60,10 @@ public:
     virtual BinJSONType getType() = 0;
     /** @brief Return whether this value is null. */
     virtual bool isNull() { return false; }
+    /** @brief Return whether this value represents an internal error. */
+    virtual bool isError() { return false; }
+    /** @brief Return the error message, or an empty string when not an error. */
+    virtual std::string& error() { static std::string empty; return empty; }
     /** @brief Return the byte buffer held by this value, if any. */
     virtual Buffer buffer() { return Buffer(0); }
     /** @brief Return the numeric value, or NaN when not numeric. */
@@ -258,6 +264,33 @@ public:
 };
 
 
+/**
+ * @brief Represents an internal error that cannot be encoded in binJSON.
+ *
+ * Generating binJSON from an error value encodes it as null.
+ */
+class Error: public Value
+{
+public:
+    /** @brief Type tag identifying this internal error value. */
+    static constexpr BinJSONType type = BinJSONType::ERROR;
+    /** @brief Error message. */
+    std::string message;
+    /** @brief Construct an error with an empty message. */
+    Error(): message() { }
+    /** @brief Construct an error from a null-terminated message. */
+    Error(const char* str): message(str) { }
+    /** @brief Construct an error by copying @p value. */
+    Error(const std::string& value): message(value) { }
+    /** @brief Return the error type tag. */
+    BinJSONType getType() override { return type; }
+    /** @brief Always returns true. */
+    bool isError() override{ return true; }
+    /** @brief Return the error message. */
+    std::string& error() override{ return message; }
+};
+
+
 /** @brief Create a null value. */
 static std::shared_ptr<Null> from(nullptr_t)
 {
@@ -324,6 +357,34 @@ static inline void generate(const std::shared_ptr<Value>& value, std::vector<Buf
     generate(value, buffer, 0, array, 1, 1);
     array[0] = buffer;
 }
+
+#if 0 // TODO later
+
+/** @brief Parse binJSON and convert to Value.
+ *
+ * @param buffer       Buffer containing binJSON data.
+ * @param bufferOffset Offset in buffer where binJSON data starts.
+ * @param array        Array of binary values that should be used when parsing.
+ * @param arrayOffset  Where referenced binary values starts in the array.
+ * @param bufferIndex  What is the starting index in binJSON of the binary value.
+ * @returns            Parsed top-level value or Error if a parsing error occurs.
+ */
+std::shared_ptr<Value> parse(Buffer buffer, int32_t bufferOffset,
+    const std::vector<Buffer>& array, int32_t arrayOffset, int32_t bufferIndex);
+
+/** @brief Parse binJSON using the default buffer offsets.
+ *
+ * @param array Buffers containing the binJSON data and referenced binary values.
+ * @returns Parsed top-level value, or an Error if the input is empty or parsing fails.
+ */
+static inline std::shared_ptr<Value> parse(const std::vector<Buffer>& array)
+{
+    if (array.size() == 0) {
+        return std::make_shared<Error>("Empty input");
+    }
+    return parse(array[0], 0, array, 1, 1);
+}
+#endif
 
 };
 

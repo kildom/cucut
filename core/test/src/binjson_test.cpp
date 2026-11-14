@@ -56,6 +56,22 @@ TEST(BinJSONValueTest, StringSupportsLengthDelimitedInput)
     EXPECT_EQ(value.string(), "hel");
 }
 
+TEST(BinJSONValueTest, ErrorStoresAndExposesItsMessage)
+{
+    BinJSON::Error empty;
+    BinJSON::Error cStringError("invalid input");
+    BinJSON::Error stringError(std::string("parse failed"));
+
+    EXPECT_EQ(empty.getType(), BinJSON::BinJSONType::ERROR);
+    EXPECT_TRUE(empty.isError());
+    EXPECT_TRUE(empty.error().empty());
+    EXPECT_EQ(cStringError.error(), "invalid input");
+    EXPECT_EQ(stringError.error(), "parse failed");
+
+    stringError.error() = "updated message";
+    EXPECT_EQ(stringError.message, "updated message");
+}
+
 TEST(BinJSONValueTest, ToReturnsSelfOnMatchingTypeAndDefaultOtherwise)
 {
     auto value = std::make_shared<BinJSON::Number>(12.5);

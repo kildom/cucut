@@ -31,10 +31,14 @@ static void generateRecursive(const std::shared_ptr<Value>& value, Buffer& buffe
 
     int32_t offset = buffer.size();
     buffer.grow(offset + 1);
-    buffer.to<uint8_t*>()[offset] = (uint8_t)value->getType();
+    auto type = value->getType();
+    if (type == BinJSONType::ERROR) {
+        type = BinJSONType::NUL;
+    }
+    buffer.to<uint8_t*>()[offset] = (uint8_t)(type);
     offset++;
 
-    switch (value->getType())
+    switch (type)
     {
     case BinJSONType::NUL: {
         break;
