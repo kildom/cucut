@@ -102,3 +102,12 @@ void generate(const std::shared_ptr<Value>& value, Buffer& buffer, int32_t buffe
 }
 
 };
+
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
+static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
+    "CuCut is only compatible with little-endian machines.");
+#elif defined(_WIN32)
+static_assert(true, "CuCut is only compatible with little-endian machines.");
+#else
+#error "Cannot verify target byte order; CuCut is only compatible with little-endian machines."
+#endif
