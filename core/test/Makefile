@@ -4,12 +4,14 @@ CPPFLAGS += \
 	-Igtest/googletest/include \
 	-Igtest/googlemock/include \
 	-Igtest/googletest \
-	-Igtest/googlemock
+	-Igtest/googlemock \
+	-I..
 LDLIBS += -pthread
 
 TEST_BINARY := build/core_tests
 TEST_SOURCES := \
 	src/binjson_test.cpp \
+	src/binjson_generate_test.cpp \
 	src/buffer_test.cpp \
 	gtest/googletest/src/gtest-all.cc \
 	gtest/googlemock/src/gmock-all.cc \
@@ -22,7 +24,7 @@ all: $(TEST_BINARY)
 run: $(TEST_BINARY)
 	./$(TEST_BINARY)
 
-$(TEST_BINARY): $(TEST_SOURCES) | build
+$(TEST_BINARY): $(TEST_SOURCES) ../binjson.cpp ../binjson.hpp ../buffer.hpp ../errors.hpp ../ref.hpp | build
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 build:

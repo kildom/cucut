@@ -1,19 +1,9 @@
-#include <gtest/gtest.h>
+#include "includes.hpp"
 
-#include <cmath>
-#include <cstdint>
-#include <cstdlib>
-#include <map>
-#include <memory>
-#include <string>
-#include <vector>
+namespace binjson_test {
 
-#include "../../binjson.hpp"
-
-[[noreturn]] void fatalError(const char*)
-{
-    std::abort();
-}
+#include "binjson.hpp"
+#include "binjson.cpp"
 
 TEST(BinJSONTypeTest, TypeTagsMatchBinJSONEncoding)
 {
@@ -137,4 +127,6 @@ TEST(BinJSONLiteralTest, CreatesNumberAndStringValues)
     EXPECT_DOUBLE_EQ(integer->number(), 42.0);
     EXPECT_DOUBLE_EQ(decimal->number(), 1.5);
     EXPECT_EQ(text->string(), "hi");
+}
+
 }

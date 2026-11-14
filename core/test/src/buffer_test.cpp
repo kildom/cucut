@@ -1,25 +1,8 @@
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include "includes.hpp"
 
-#include <algorithm>
-#include <cstddef>
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <new>
-#include <utility>
-#include <vector>
+namespace buffer_test {
 
-namespace test_buffer {
-#include "../../buffer.hpp"
-
-[[noreturn]] void fatalError(const char*)
-{
-    std::abort();
-}
-}
-
-using test_buffer::Buffer;
+#include "buffer.hpp"
 
 // Tests default construction. It should allocate a non-null empty buffer
 // aligned to 64 bytes; size and pointer alignment are checked directly.
@@ -452,4 +435,6 @@ TEST(BufferTest, TypedPointerConversionsReferToSameAlignedStorage)
     EXPECT_EQ(static_cast<void*>(data), static_cast<void*>(static_cast<uint64_t*>(buffer)));
     EXPECT_EQ(static_cast<void*>(data), static_cast<void*>(static_cast<void*>(buffer)));
     EXPECT_EQ(reinterpret_cast<uintptr_t>(data) % uintptr_t{64}, uintptr_t{0});
+}
+
 }

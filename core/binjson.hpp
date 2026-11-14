@@ -320,7 +320,9 @@ void generate(const std::shared_ptr<Value>& value, Buffer& buffer, int32_t buffe
 static inline void generate(const std::shared_ptr<Value>& value, std::vector<Buffer>& array)
 {
     array.resize(1);
-    generate(value, array[0], 0, array, 1, 1);
+    Buffer buffer(0);
+    generate(value, buffer, 0, array, 1, 1);
+    array[0] = buffer;
 }
 
 };

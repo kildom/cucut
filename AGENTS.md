@@ -174,11 +174,12 @@ Core library unit tests use gtest and gmock. Put test sources in `core/test/src`
 make -C core/test run
 ```
 
-When a test source includes a core implementation file directly, put the include in a test-specific namespace to avoid name collisions with other test sources included in the same binary. Include its dependencies before entering the namespace if they define declarations that must remain in the global namespace.
+Prefer including the core implementation source under test directly in its test source rather than linking it as a separate source file. Put the include in a test-specific namespace to avoid name collisions with other test sources included in the same binary. Include its dependencies before entering the namespace if they define declarations that must remain in the global namespace.
 
 ```c++
 namespace test_buffer {
 #include "../../buffer.hpp"
+#include "../../buffer.cpp"
 }
 ```
 

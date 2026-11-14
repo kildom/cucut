@@ -7,7 +7,11 @@
 #define CUCUT_NORETURN [[noreturn]]
 #endif
 
-CUCUT_NORETURN void fatalError(const char* message);
+static CUCUT_NORETURN void fatalError(const char* message)
+{
+    (void)message;
+    std::abort(); // TODO: Real fatal error handling
+}
 
 
 #define CUCUT_ASSERT(condition, ...) // TODO: Implement assert in debug build

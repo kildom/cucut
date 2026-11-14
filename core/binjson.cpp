@@ -8,10 +8,10 @@ template<bool grow = true, class T>
 static inline int32_t write(Buffer& buffer, int32_t offset, T* data, int32_t size)
 {
     if (grow) {
-        buffer.grow(offset + sizeof(T));
+        buffer.grow(offset + size);
     }
-    std::memcpy(buffer.to<uint8_t*>() + offset, &value, sizeof(T));
-    return offset + sizeof(T);
+    std::memcpy(buffer.to<uint8_t*>() + offset, data, size);
+    return offset + size;
 }
 
 
@@ -27,7 +27,7 @@ static void generateRecursive(const std::shared_ptr<Value>& value, Buffer& buffe
     struct {
         uint32_t dataSize;
         uint32_t count;
-    } containerHeader;
+    } containerHeader{};
 
     int32_t offset = buffer.size();
     buffer.grow(offset + 1);
@@ -101,4 +101,4 @@ void generate(const std::shared_ptr<Value>& value, Buffer& buffer, int32_t buffe
     generateRecursive(value, buffer, array, bufferIndex - arrayOffset);
 }
 
-}
+};
