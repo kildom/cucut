@@ -473,6 +473,21 @@ public:
      */
     operator void*() const { return reinterpret_cast<void*>(buffer); }
 
+    /** @brief Convert the buffer to a requested C++ type.
+     *
+     * This helper forwards to the implicit conversion operators defined above,
+     * allowing expressions such as `buffer.to<uint8_t*>()` or
+     * `buffer.to<int32_t*>()` without exposing the raw pointer arithmetic.
+     *
+     * @tparam T Type to cast the buffer to.
+     * @return The buffer interpreted as type `T`.
+     */
+    template<class T>
+    T to()
+    {
+        return (T)(*this);
+    }
+
     /** @brief WebAssembly wrapper functions.
      *
      * See the corresponding called function for details.

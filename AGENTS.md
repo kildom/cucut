@@ -87,9 +87,9 @@ struct BinJSONNull {
   uint8_t type; // = 0
 };
 
-struct BinJSONBuffer {
+struct BinJSONBinary {
   uint8_t type; // = 1
-  uint64_t bufferIndex; // Buffer index in array of buffer provided together with this binJSON
+  uint32_t bufferIndex; // Buffer index in array of buffer provided together with this binJSON
 };
 
 struct BinJSONNumber {
@@ -99,23 +99,24 @@ struct BinJSONNumber {
 
 struct BinJSONString {
   uint8_t type; // = 3
-  uint64_t length; // String length in bytes (number of characters may be less)
+  uint32_t length; // String length in bytes (number of characters may be less)
   char text[length] // Only UTF-8 encoded string
 };
 
 struct BinJSONArray {
   uint8_t type; // = 4
-  uint64_t dataSize; // total size of the following data in bytes
-  uint64_t count; // number of array elements
+  uint32_t dataSize; // total size of the following data in bytes
+  uint32_t count; // number of array elements
   uint8_t buffer[]; // Buffer containing all elements, packed, without padding
 };
 
 struct BinJSONObject {
   uint8_t type; // = 5
-  uint64_t dataSize; // total size of the following data in bytes
-  uint64_t count; // number of object properties
+  uint32_t dataSize; // total size of the following data in bytes
+  uint32_t count; // number of object properties
   struct {
-    BinJSONString name; // property name
+    uint32_t length; // property name length in bytes
+    char text[length] // property name
     uint8_t buffer[]; // Buffer containing binJSON value
   } properties[count];
 };
@@ -145,13 +146,13 @@ The front-end:
 - Convert backend output binJSON to JSON and write result to first argument `<output.json>`.
 
 
-The conversion of types between JSON and binJSON in obvious with exception of BinJSONBuffer.
+The conversion of types between JSON and binJSON in obvious with exception of BinJSONBinary.
 
 When converting to binJSON and string starts with `#FILE#` followed by file name, then:
 - put that file to an array of arguments (keep the index where it was added)
-- write BinJSONBuffer structure with bufferIndex equals to index where file name was added minus 1.
+- write BinJSONBinary structure with bufferIndex equals to index where file name was added minus 1.
 
-When converting from binJSON and we have BinJSONBuffer structure, convert it to a string `#FILE#<output-stem>-<N>.raw`, where `<N>` is bufferIndex from BinJSONBuffer.
+When converting from binJSON and we have BinJSONBinary structure, convert it to a string `#FILE#<output-stem>-<N>.raw`, where `<N>` is bufferIndex from BinJSONBinary.
 
 Back-end is written in C++ and it is linked with core library. It is just a wrapper for core library request-response API. The usage is following:
 
@@ -163,3 +164,32 @@ The back-end:
 - Reads all `<input-N>` files to a buffers and creates an array of buffers out of them.
 - Pass array of buffers to core library request function.
 - Write each element of response array of buffers to an output files. The output file name is created by appending `-<N>.raw` where `<N>` is the index in the output array. Notice that core library always puts response binJSON to first element, so the response binJSON is always in a file `<output-stem>-0.raw`.
+
+
+## Core library unit tests
+
+Core library unit tests use gtest and gmock. Put test sources in `core/test/src`; the test Makefile builds them together into one binary. Build and run the suite from the repository root with:
+
+```
+make -C core/test run
+```
+
+When a test source includes a core implementation file directly, put the include in a test-specific namespace to avoid name collisions with other test sources included in the same binary. Include its dependencies before entering the namespace if they define declarations that must remain in the global namespace.
+
+```c++
+namespace test_buffer {
+#include "../../buffer.hpp"
+}
+```
+
+If a test needs to access private or protected members, temporarily redefine the access keywords only around the implementation include, then immediately undefine them. Include dependencies before these macros so they are not affected.
+
+```c++
+#define private public
+#define protected public
+#include "../../buffer.hpp"
+#undef protected
+#undef private
+```
+
+Prefer testing observable behavior through the public interface; use access overrides only when behavior cannot reasonably be tested otherwise.

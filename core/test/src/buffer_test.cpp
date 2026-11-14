@@ -33,6 +33,21 @@ TEST(BufferTest, DefaultConstructionAllocatesAlignedEmptyBuffer)
     EXPECT_EQ(reinterpret_cast<uintptr_t>(data) % uintptr_t{64}, uintptr_t{0});
 }
 
+// Tests typed conversion helper. The buffer should convert to the requested
+// pointer type without changing the underlying memory address.
+TEST(BufferTest, ToReturnsRequestedPointerType)
+{
+    Buffer buffer(8);
+    auto* data = static_cast<uint8_t*>(buffer);
+    data[0] = 0x10;
+    data[1] = 0x20;
+    data[2] = 0x30;
+    data[3] = 0x40;
+
+    EXPECT_EQ(buffer.to<uint8_t*>(), data);
+    EXPECT_EQ(buffer.to<int32_t*>(), reinterpret_cast<int32_t*>(data));
+}
+
 // Tests zero-size construction and later resizing. Zero-size operations should
 // remain valid, and growing to four bytes should make writable storage usable.
 TEST(BufferTest, ZeroSizedConstructionAndResizeRemainUsable)

@@ -1,93 +1,346 @@
 #ifndef BINJSON_HPP
 #define BINJSON_HPP
 
-#if 0 // TODO: Implement
-
-#include <stdint.h>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <limits>
+#include <memory>
+#include <vector>
+#include <map>
 
 #include "buffer.hpp"
 
+namespace BinJSON {
 
-namespace BinJSONType {
-enum {
+/**
+ * @brief Identifies the kind of a binJSON value.
+ *
+ * The underlying values correspond to the type tags used by the binJSON
+ * format.
+ */
+enum class BinJSONType : std::uint8_t {
+    /** Null value. */
     NUL = 0,
-    BUFFER = 1,
+    /** External byte buffer. */
+    BINARY = 1,
+    /** Floating-point number. */
     NUMBER = 2,
+    /** UTF-8 string. */
     STRING = 3,
+    /** Ordered sequence of values. */
     ARRAY = 4,
+    /** String-keyed collection of values. */
     OBJECT = 5,
-} T;
 };
 
+class Array;
+class Object;
+class Null;
 
-class BinJSONValue {
+/**
+ * @brief Base class for values represented by the binJSON object model.
+ *
+ * Values can expose type-specific data through the accessor methods. An
+ * accessor that does not apply to a derived type returns an empty/default
+ * value. Indexing an unsupported or missing element yields a reusable null
+ * value.
+ */
+class Value: public std::enable_shared_from_this<Value> {
+
+private:
+    std::shared_ptr<Value> nullValue;
 
 public:
 
-    virtual BinJSONType:T getType() = 0;
+    /** @brief Return the type of this value. */
+    virtual BinJSONType getType() = 0;
+    /** @brief Return whether this value is null. */
     virtual bool isNull() { return false; }
+    /** @brief Return the byte buffer held by this value, if any. */
     virtual Buffer buffer() { return Buffer(0); }
+    /** @brief Return the numeric value, or NaN when not numeric. */
     virtual double number() { return std::numeric_limits<double>::quiet_NaN(); }
+    /** @brief Return the string held by this value, or an empty string. */
     virtual std::string& string() { static std::string empty; return empty; }
+    /** @brief Return the number of elements or properties in this value. */
     virtual int length() { return 0; }
-    virtual std::shared_ptr<BinJSONValue> get(int index) { return std::make_shared<BinJSONNull>(); }
-    virtual std::shared_ptr<BinJSONValue> get(const std::string& name) { return std::make_shared<BinJSONNull>(); }
-    virtual ~BinJSONValue() {}
+    /** @brief Resize this value when it supports resizing. */
+    virtual void length(int size);
+    /** @brief Access an array element; unsupported or missing elements are null. */
+    virtual std::shared_ptr<Value>& get(int index);
+    /** @brief Access an object property; unsupported or missing properties are null. */
+    virtual std::shared_ptr<Value>& get(const std::string& name);
+    /** @brief Destroy the value through a base-class pointer. */
+    virtual ~Value() {}
 
-    std::shared_ptr<BinJSONValue> operator[](int index) { return get(index); }
-    std::shared_ptr<BinJSONValue> operator[](const std::string& name) { return get(name); }
+    /** @brief Access an array element using subscript syntax. */
+    std::shared_ptr<Value>& operator[](int index) { return get(index); }
+    /** @brief Access an object property using subscript syntax. */
+    std::shared_ptr<Value>& operator[](const std::string& name) { return get(name); }
 
+    /**
+     * @brief Obtain this value as a concrete value type.
+     * @tparam T The requested derived value type.
+     * @return This value when its type matches @c T; otherwise a default
+     *         constructed @c T.
+     */
+    template<class T>
+    std::shared_ptr<T> to() {
+        if (getType() != T::type) {
+            return std::make_shared<T>();
+        }
+        return std::static_pointer_cast<T>(shared_from_this());
+    }
 };
 
 
-class BinJSONNull: public BinJSONValue {
+/** @brief Represents the binJSON null value. */
+class Null: public Value {
 
 public:
-    virtual BinJSONType:T getType() { return BinJSONType::NUL; }
-    virtual bool isNull() { return true; }
+    /** @brief Type tag for null values. */
+    static constexpr BinJSONType type = BinJSONType::NUL;
+    /** @brief Return the null type tag. */
+    BinJSONType getType() override { return type; }
+    /** @brief Always returns true. */
+    bool isNull() override { return true; }
 };
 
+inline void Value::length(int) { }
 
-class BinJSONBuffer: public BinJSONValue {
-
-public:
-    Buffer value;
-    virtual BinJSONType:T getType() { return BinJSONType::BUFFER; }
-    virtual Buffer buffer() { return value; }
-};
-
-class BinJSONNumber: public BinJSONValue {
-
-public:
-    double value;
-    virtual BinJSONType:T getType() { return BinJSONType::NUMBER; }
-    virtual double number() { return value; }
-};
-
-
-class BinJSONString: public BinJSONValue
+inline std::shared_ptr<Value>& Value::get(int)
 {
-public:
-    std::string value;
-    virtual BinJSONType:T getType() { return BinJSONType::STRING; }
-    virtual std::string& string() { return value; }
-};
-
-class BinJSONContainer: public BinJSONValue
-{
-
-};
-
-class BinJSONArray: public BinJSONContainer
-{
-public:
-    std::vector<std::shared_ptr<BinJSONValue>> value;
-    virtual std::shared_ptr<BinJSONArray> getArray() { return std::make_shared<BinJSONArray>(); }
-    virtual std::shared_ptr<BinJSONObject> getObject() { return std::make_shared<BinJSONObject>(); }
+    if (nullValue == nullptr || !nullValue->isNull()) {
+        nullValue = std::make_shared<Null>();
+    }
+    return nullValue;
 }
 
-#endif
+inline std::shared_ptr<Value>& Value::get(const std::string&)
+{
+    if (nullValue == nullptr || !nullValue->isNull()) {
+        nullValue = std::make_shared<Null>();
+    }
+    return nullValue;
+}
+
+
+/** @brief Represents a byte buffer referenced by a binJSON value. */
+class Binary: public Value {
+
+public:
+    /** @brief Type tag for buffer values. */
+    static constexpr BinJSONType type = BinJSONType::BINARY;
+    /** @brief Buffer held by this value. */
+    Buffer value;
+    /** @brief Construct an empty buffer value. */
+    Binary(): value() { }
+    /** @brief Construct a buffer value sharing @p value. */
+    Binary(const Buffer& value): value(value) { }
+    /** @brief Return the buffer type tag. */
+    BinJSONType getType() override { return type; }
+    /** @brief Return the held buffer. */
+    Buffer buffer() override { return value; }
+};
+
+/** @brief Represents a floating-point number. */
+class Number: public Value {
+
+public:
+    /** @brief Type tag for numeric values. */
+    static constexpr BinJSONType type = BinJSONType::NUMBER;
+    /** @brief Numeric value. */
+    double value;
+    /** @brief Construct a number initialized to zero. */
+    Number(): value() { }
+    /** @brief Construct a number with the specified value. */
+    Number(double value): value(value) { }
+    /** @brief Return the number type tag. */
+    BinJSONType getType() override { return type; }
+    /** @brief Return the held number. */
+    double number() override { return value; }
+};
+
+
+/** @brief Represents a UTF-8 string. */
+class String: public Value
+{
+public:
+    /** @brief Type tag for string values. */
+    static constexpr BinJSONType type = BinJSONType::STRING;
+    /** @brief String contents. */
+    std::string value;
+    /** @brief Construct an empty string. */
+    String(): value() { }
+    /** @brief Construct a string from @p length bytes of @p str. */
+    String(const char* str, size_t length): value(str, length) { }
+    /** @brief Construct a string by copying @p value. */
+    String(const std::string& value): value(value) { }
+    /** @brief Return the string type tag. */
+    BinJSONType getType() override { return type; }
+    /** @brief Return the held string. */
+    std::string& string() override { return value; }
+    /** @brief Return the length of the string. */
+    int length() override { return value.length(); }
+};
+
+/** @brief Represents an indexed sequence of binJSON values. */
+class Array: public Value
+{
+public:
+    /** @brief Type tag for array values. */
+    static constexpr BinJSONType type = BinJSONType::ARRAY;
+    /** @brief Values in this array, in index order. */
+    std::vector<std::shared_ptr<Value>> value;
+
+    /** @brief Construct an empty array. */
+    Array(): value() { }
+    /** @brief Construct an array with @p size default-initialized entries. */
+    Array(size_t size): value(size) { }
+    /** @brief Construct an array by copying @p value. */
+    Array(const std::vector<std::shared_ptr<Value>> &value): value(value) { }
+    template <size_t N>
+    Array(const std::vector<std::array<Value, N>> &value): value(value) { }
+
+    /** @brief Return the array type tag. */
+    BinJSONType getType() override { return type; }
+
+    /** @brief Return the number of array entries. */
+    int length() override { return static_cast<int>(value.size()); }
+
+    /** @brief Resize the array to @p size entries. */
+    void length(int size) override
+    {
+        value.resize(size);
+    }
+
+    /** @brief Access an array entry, returning null for an out-of-range index. */
+    std::shared_ptr<Value>& get(int index)
+    {
+        if (index < 0 || static_cast<size_t>(index) >= value.size()) {
+            return Value::get(index);
+        }
+        return value[index];
+    }
+};
+
+
+/** @brief Represents a string-keyed collection of binJSON values. */
+class Object: public Value
+{
+public:
+    /** @brief Type tag for object values. */
+    static constexpr BinJSONType type = BinJSONType::OBJECT;
+    /** @brief Object properties, keyed by their names. */
+    std::map<std::string, std::shared_ptr<Value>> value;
+
+    /** @brief Construct an empty object. */
+    Object(): value() { }
+    /** @brief Construct an object by copying @p value. */
+    Object(const std::map<std::string, std::shared_ptr<Value>> &value): value(value) { }
+
+    /** @brief Return the object type tag. */
+    BinJSONType getType() override { return type; }
+
+    /** @brief Return the number of properties in the object. */
+    int length() override { return static_cast<int>(value.size()); }
+
+    /** @brief Access a property, creating it as null if it is missing. */
+    std::shared_ptr<Value>& get(const std::string& name) override
+    {
+        if (value.count(name) == 0) {
+            value[name] = std::make_shared<Null>();
+        }
+        return value[name];
+    }
+};
+
+
+/** @brief Create a null value. */
+static std::shared_ptr<Null> from(nullptr_t)
+{
+    return std::make_shared<Null>();
+}
+
+/** @brief Create a buffer value sharing @p value. */
+static std::shared_ptr<Binary> from(const Buffer& value)
+{
+    return std::make_shared<Binary>(value);
+}
+
+/** @brief Create a number value. */
+static std::shared_ptr<Number> from(double value)
+{
+    return std::make_shared<Number>(value);
+}
+
+/** @brief Create a string value. */
+static std::shared_ptr<String> from(const std::string& value)
+{
+    return std::make_shared<String>(value);
+}
+
+
+/** @brief Create an array value by copying @p value. */
+static std::shared_ptr<Array> from(const std::vector<std::shared_ptr<Value>> &value)
+{
+    return std::make_shared<Array>(value);
+}
+
+/** @brief Create an array value from an array-valued vector. */
+template <size_t N>
+static std::shared_ptr<Array> from(const std::vector<std::array<Value, N>> &value)
+{
+    return std::make_shared<Array>(value);
+}
+
+
+/** @brief Create an object value by copying @p value. */
+static std::shared_ptr<Object> from(const std::map<std::string, std::shared_ptr<Value>> &value)
+{
+    return std::make_shared<Object>(value);
+}
+
+//std::shared_ptr<Value> parse(Buffer data, int32_t offset = 0, int32_t size = -1);
+
+/** @brief Generate binJSON from Value into buffers.
+ *
+ * @param value        Value to convert to binJSON.
+ * @param buffer       Buffer where to encode binJSON.
+ * @param bufferOffset Offset in the buffer where start to write.
+ * @param array        Array of buffers where to store binary values from value.
+ * @param arrayOffset  Element index in array where to start putting buffers.
+ * @param bufferIndex  Index in binJSON from which to start indexing binary value.
+ */
+void generate(const std::shared_ptr<Value>& value, Buffer& buffer, int32_t bufferOffset,
+    std::vector<Buffer>& array, int32_t arrayOffset, int32_t bufferIndex);
+
+static inline void generate(const std::shared_ptr<Value>& value, std::vector<Buffer>& array)
+{
+    array.resize(1);
+    generate(value, array[0], 0, array, 1, 1);
+}
+
+};
+
+/** @brief Create a binJSON number from an unsigned integer literal. */
+static std::shared_ptr<BinJSON::Number> operator"" _binjson(unsigned long long value)
+{
+    return std::make_shared<BinJSON::Number>((double)value);
+}
+
+/** @brief Create a binJSON number from a floating-point literal. */
+static std::shared_ptr<BinJSON::Number> operator"" _binjson(long double value)
+{
+    return std::make_shared<BinJSON::Number>((double)value);
+}
+
+/** @brief Create a binJSON string from a string literal. */
+static std::shared_ptr<BinJSON::String> operator"" _binjson(const char* str, size_t length)
+{
+    return std::make_shared<BinJSON::String>(str, length);
+}
 
 #endif // BINJSON_HPP
