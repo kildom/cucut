@@ -328,19 +328,19 @@ static inline void generate(const std::shared_ptr<Value>& value, std::vector<Buf
 };
 
 /** @brief Create a binJSON number from an unsigned integer literal. */
-static std::shared_ptr<BinJSON::Number> operator"" _binjson(unsigned long long value)
+inline std::shared_ptr<BinJSON::Number> operator"" _binjson(unsigned long long value)
 {
     return std::make_shared<BinJSON::Number>((double)value);
 }
 
 /** @brief Create a binJSON number from a floating-point literal. */
-static std::shared_ptr<BinJSON::Number> operator"" _binjson(long double value)
+inline std::shared_ptr<BinJSON::Number> operator"" _binjson(long double value)
 {
     return std::make_shared<BinJSON::Number>((double)value);
 }
 
 /** @brief Create a binJSON string from a string literal. */
-static std::shared_ptr<BinJSON::String> operator"" _binjson(const char* str, size_t length)
+inline std::shared_ptr<BinJSON::String> operator"" _binjson(const char* str, size_t length)
 {
     return std::make_shared<BinJSON::String>(str, length);
 }
