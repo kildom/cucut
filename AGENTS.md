@@ -174,23 +174,40 @@ Core library unit tests use gtest and gmock. Put test sources in `core/test/src`
 make -C core/test run
 ```
 
-Prefer including the core implementation source under test directly in its test source rather than linking it as a separate source file. Put the include in a test-specific namespace to avoid name collisions with other test sources included in the same binary. Include its dependencies before entering the namespace if they define declarations that must remain in the global namespace.
+Each test source starts with `#include "includes.hpp"`. That header includes the standard-library headers used throughout the project, as well as gtest and gmock; do not include those again in individual test sources. Include all standard-library headers that code under test may use here, because including a missing standard header from inside a test namespace can cause compilation errors. If unit tests produce unexpected compilation errors involving standard-library headers, check that `includes.hpp` includes all required headers.
 
 ```c++
-namespace test_buffer {
-#include "../../buffer.hpp"
-#include "../../buffer.cpp"
+#include "includes.hpp"
+
+namespace buffer_test {
+
+#include "buffer.hpp"
+#include "buffer.cpp"
+
+TEST(BufferTest, Example)
+{
+    // Test the included implementation here.
+}
 }
 ```
 
-If a test needs to access private or protected members, temporarily redefine the access keywords only around the implementation include, then immediately undefine them. Include dependencies before these macros so they are not affected.
+The namespace name is the test source file name without its extension. All code under test belongs inside that namespace: include its header and source files directly, rather than linking the source separately. Include any dependent implementation (`.cpp`) files there as well; omitting one can lead to linker errors. Write the tests in the same namespace so they can refer to the implementation symbols normally. Each test source can use its own namespace, allowing multiple instances of the implementation with different preprocessor configurations in one test binary.
+
+If a test needs to access private or protected members, temporarily redefine the access keywords around the implementation includes, then immediately undefine them:
 
 ```c++
+#include "includes.hpp"
+
+namespace buffer_test {
 #define private public
 #define protected public
-#include "../../buffer.hpp"
-#undef protected
+#include "buffer.hpp"
+#include "buffer.cpp"
 #undef private
+#undef protected
+
+// Tests go here.
+}
 ```
 
 Prefer testing observable behavior through the public interface; use access overrides only when behavior cannot reasonably be tested otherwise.
