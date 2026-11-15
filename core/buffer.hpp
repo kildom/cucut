@@ -26,7 +26,11 @@
  */
 class Buffer
 {
+public:
+    static constexpr int32_t alignment = 64;
+
 private:
+    /** @brief Required alignment of the buffer data in bytes. */
 
     /** @brief Allocation metadata stored immediately before a buffer's data.
      *
@@ -42,8 +46,6 @@ private:
      */
     struct ControlBlock
     {
-        /** @brief Required alignment of the buffer data in bytes. */
-        static constexpr int32_t alignment = 64;
         /** @brief Maximum capacity of one allocation in bytes. */
         static constexpr int32_t maximumCapacity = 1024 * 1024 * 1024;
         /** @brief Buffer offset from the control block, based on the member layout. */

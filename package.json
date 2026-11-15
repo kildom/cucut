@@ -20,6 +20,8 @@
     "core-unit-test": "cd core/test && make clean run"
   },
   "dependencies": {
+    "@types/node": "^26.6.6",
+    "mupdf": "^1.28.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
