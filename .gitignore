@@ -1,1 +1,4 @@
-core/test/build/
+/core/test/build/
+/core/tools/
+/core/build/
+/node_modules/

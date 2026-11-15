@@ -1,0 +1,26 @@
+{
+  "name": "cucut",
+  "version": "0.0.1",
+  "private": true,
+  "description": "CuCut is a software that converts PCB production files into G-code for CNC milling machines.",
+  "homepage": "https://github.com/kildom/cucut#readme",
+  "bugs": {
+    "url": "https://github.com/kildom/cucut/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://kildom@github.com/kildom/cucut.git"
+  },
+  "license": "Apache-2.0",
+  "author": "Dominik Kilian",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "core-download-tools": "npx tsx core/script/download-tools.ts",
+    "core-unit-test": "cd core/test && make clean run"
+  },
+  "dependencies": {
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

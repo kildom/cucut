@@ -124,7 +124,53 @@ struct BinJSONObject {
 
 ```
 
-### Bitmaps
+### WebAssembly interface
+
+The JavaScript/TypeScript communicates with core library WebAssembly module using following API:
+
+#### Exports
+
+* `uint8_t* alloc(int32_t newSize, int32_t prealloc)`
+
+  Allocate new dynamic memory. Additional parameter `prealloc` requests additional space after the allocated block to allow further grow.
+
+  The size of the block is in `uint32_t` value just before allocated blocked - 4 bytes before returned value.
+  Application can access it to get block size. It does not include preallocated space. Application cannot modify
+  it directly, it should use `resize` exported function.
+
+  Allocated memory is reference counted and the counter is managed by `inc` and `dec` functions. The `alloc` function returns block with reference counter 1. When counter reach 0, block is deallocated.
+
+  Unlike standard C malloc, allocated memory has application-accessible size and it adds reference counting.
+
+* `void inc(uint8_t* buffer)`
+
+  Increment reference counter of the allocated block.
+
+* `void dec(uint8_t* buffer)`
+
+  Decrement reference counter of the allocated block. Deallocate block when it reached 0.
+
+* `uint8_t* resize(uint8_t* buffer, int32_t newSize, int32_t preallocateSize, int32_t grow, int32_t copyContent)`
+
+  Resize allocated buffer. The buffer may or may not be reallocated depending of current allocation size and requested new size. New buffer pointer is returned. When resizing buffer shared between multiple owners (ref counter greaten than 1), reallocation happens in context of single owner, so after resize, other owner may still hold old memory pointer. Both pointers, in this case, are valid and can be used as usual.
+
+  The `preallocateSize` is a hint for allocator to allocate more space for further buffer expansion. It is hint and may not be respected.
+
+  The `grow` flag hints that this buffer may grow and there is no point of shrinking allocated size if requested size is significantly smaller. Unused space will be treated as preallocated size for further grow.
+
+  The `copyContent` flag tells that current content of the buffer is important and must be copied to new memory block if reallocated.
+
+  This function handles correct reference counter adjustments if needed.
+
+* `uint8_t* request(uint8_t* inputBufferPtr)`
+
+  Send a request to core library and get response.
+
+  The `inputBufferPtr` buffer contains array of pointers to buffers. First buffer contains binJSON request.
+  Other buffers are needed to decode binJSON data. The ownership of all input buffers and buffer containing array is not passed to the function.
+
+  After execution, the function returns a buffer containing array of pointer to buffers. The ownership of
+  all of those is transferred to the caller. First array item is binJSON containing response.
 
 ## CLI
 
