@@ -12,6 +12,7 @@ TEST_BINARY := build/core_tests
 TEST_SOURCES := \
 	src/binjson_test.cpp \
 	src/binjson_generate_test.cpp \
+	src/binjson_parse_test.cpp \
 	src/buffer_test.cpp \
 	gtest/googletest/src/gtest-all.cc \
 	gtest/googlemock/src/gmock-all.cc \

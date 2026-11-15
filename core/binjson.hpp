@@ -358,8 +358,6 @@ static inline void generate(const std::shared_ptr<Value>& value, std::vector<Buf
     array[0] = buffer;
 }
 
-#if 0 // TODO later
-
 /** @brief Parse binJSON and convert to Value.
  *
  * @param buffer       Buffer containing binJSON data.
@@ -367,7 +365,7 @@ static inline void generate(const std::shared_ptr<Value>& value, std::vector<Buf
  * @param array        Array of binary values that should be used when parsing.
  * @param arrayOffset  Where referenced binary values starts in the array.
  * @param bufferIndex  What is the starting index in binJSON of the binary value.
- * @returns            Parsed top-level value or Error if a parsing error occurs.
+ * @returns            Parsed top-level value or BinJSON::Error if a parsing error occurs.
  */
 std::shared_ptr<Value> parse(Buffer buffer, int32_t bufferOffset,
     const std::vector<Buffer>& array, int32_t arrayOffset, int32_t bufferIndex);
@@ -375,7 +373,7 @@ std::shared_ptr<Value> parse(Buffer buffer, int32_t bufferOffset,
 /** @brief Parse binJSON using the default buffer offsets.
  *
  * @param array Buffers containing the binJSON data and referenced binary values.
- * @returns Parsed top-level value, or an Error if the input is empty or parsing fails.
+ * @returns Parsed top-level value, or an BinJSON::Error if the input is empty or parsing fails.
  */
 static inline std::shared_ptr<Value> parse(const std::vector<Buffer>& array)
 {
@@ -384,7 +382,6 @@ static inline std::shared_ptr<Value> parse(const std::vector<Buffer>& array)
     }
     return parse(array[0], 0, array, 1, 1);
 }
-#endif
 
 };
 
