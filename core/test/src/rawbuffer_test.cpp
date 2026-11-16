@@ -30,12 +30,31 @@ TEST(RawBufferTest, ZeroSizedAllocationCanBeResized)
     ASSERT_NE(buffer, nullptr);
     EXPECT_EQ(reinterpret_cast<uintptr_t>(buffer) % uintptr_t{64}, uintptr_t{0});
     EXPECT_EQ(RawBuffer::refs(buffer), 1);
+    EXPECT_EQ(RawBuffer::size(buffer), 0);
 
     auto* resized = RawBuffer::realloc(buffer, 1, 0, true, true);
+    EXPECT_EQ(RawBuffer::size(resized), 1);
     resized[0] = 0x7B;
     EXPECT_EQ(resized[0], 0x7B);
     EXPECT_EQ(RawBuffer::refs(resized), 1);
 
+    RawBuffer::dec(resized);
+}
+
+TEST(RawBufferTest, AllocatedSizeTracksCapacityAcrossResize)
+{
+    auto* buffer = RawBuffer::alloc(8, 128);
+    int32_t capacity = RawBuffer::allocatedSize(buffer);
+    EXPECT_GE(capacity, 136);
+    EXPECT_LT(capacity, 136 + RawBuffer::alignment);
+
+    auto* resized = RawBuffer::realloc(buffer, capacity, 0, true, true);
+    EXPECT_EQ(resized, buffer);
+    EXPECT_EQ(RawBuffer::allocatedSize(resized), capacity);
+
+    resized = RawBuffer::realloc(resized, capacity + 1, 0, true, true);
+    EXPECT_GE(RawBuffer::allocatedSize(resized), capacity + 1);
+    EXPECT_EQ(RawBuffer::size(resized), capacity + 1);
     RawBuffer::dec(resized);
 }
 
@@ -126,6 +145,8 @@ TEST(RawBufferTest, ReallocDetachesSharedBufferAndPreservesContent)
 
     EXPECT_NE(resized, original);
     EXPECT_EQ(resized[0], 0xA5);
+    EXPECT_EQ(RawBuffer::size(original), 4);
+    EXPECT_EQ(RawBuffer::size(resized), 8);
     EXPECT_EQ(RawBuffer::refs(original), 1);
     EXPECT_EQ(RawBuffer::refs(resized), 1);
 

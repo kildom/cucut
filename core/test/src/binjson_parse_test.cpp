@@ -21,11 +21,11 @@ void appendDouble(std::vector<uint8_t>& bytes, double value)
     }
 }
 
-Buffer makeBuffer(const std::vector<uint8_t>& bytes)
+Buffer<> makeBuffer(const std::vector<uint8_t>& bytes)
 {
-    Buffer buffer(static_cast<int32_t>(bytes.size()));
+    Buffer<> buffer(static_cast<int32_t>(bytes.size()));
     if (!bytes.empty()) {
-        std::memcpy(buffer.to<uint8_t*>(), bytes.data(), bytes.size());
+        std::memcpy(buffer.raw<uint8_t*>(), bytes.data(), bytes.size());
     }
     return buffer;
 }
@@ -44,7 +44,7 @@ TEST(BinJSONParseTest, ParsesValuesGeneratedByGenerator)
             {"null", BinJSON::from(nullptr)},
         });
 
-    std::vector<Buffer> encoded;
+    std::vector<Buffer<>> encoded;
     BinJSON::generate(object, encoded);
     auto parsed = BinJSON::parse(encoded);
 
@@ -64,28 +64,28 @@ TEST(BinJSONParseTest, ParsesValuesGeneratedByGenerator)
 
 TEST(BinJSONParseTest, ResolvesBinaryBuffersUsingConfiguredOffsets)
 {
-    Buffer payload(3);
-    auto* data = payload.to<uint8_t*>();
+    Buffer<> payload(3);
+    auto* data = payload.raw<uint8_t*>();
     data[0] = 0x12;
     data[1] = 0x34;
     data[2] = 0x56;
     auto binary = BinJSON::from(payload);
-    Buffer binjson(0);
-    std::vector<Buffer> input;
+    Buffer<> binjson(0);
+    std::vector<Buffer<>> input;
     BinJSON::generate(binary, binjson, 0, input, 2, 7);
 
     ASSERT_EQ(input.size(), 3u);
-    EXPECT_EQ(binjson.to<uint8_t*>()[0], static_cast<uint8_t>(BinJSON::BinJSONType::BINARY));
-    EXPECT_EQ(binjson.to<uint8_t*>()[1], 7);
+    EXPECT_EQ(binjson.raw<uint8_t*>()[0], static_cast<uint8_t>(BinJSON::BinJSONType::BINARY));
+    EXPECT_EQ(binjson.raw<uint8_t*>()[1], 7);
     auto parsed = BinJSON::parse(binjson, 0, input, 2, 7);
 
     ASSERT_FALSE(parsed->isError()) << parsed->error();
     ASSERT_EQ(parsed->getType(), BinJSON::BinJSONType::BINARY);
     auto parsedBuffer = parsed->buffer();
     EXPECT_EQ(parsedBuffer.size(), 3);
-    EXPECT_EQ(parsedBuffer.to<uint8_t*>()[0], 0x12);
-    EXPECT_EQ(parsedBuffer.to<uint8_t*>()[1], 0x34);
-    EXPECT_EQ(parsedBuffer.to<uint8_t*>()[2], 0x56);
+    EXPECT_EQ(parsedBuffer.raw<uint8_t*>()[0], 0x12);
+    EXPECT_EQ(parsedBuffer.raw<uint8_t*>()[1], 0x34);
+    EXPECT_EQ(parsedBuffer.raw<uint8_t*>()[2], 0x56);
 }
 
 TEST(BinJSONParseTest, SupportsBufferOffset)
@@ -116,7 +116,7 @@ TEST(BinJSONParseTest, ParsesEmptyContainersAndNestedStructures)
             BinJSON::from(nullptr),
         }),
     };
-    std::vector<Buffer> encoded;
+    std::vector<Buffer<>> encoded;
     BinJSON::generate(BinJSON::from(children), encoded);
     auto parsed = BinJSON::parse(encoded);
 
@@ -134,7 +134,7 @@ TEST(BinJSONParseTest, PreservesBinaryStringsAndObjectNames)
     std::map<std::string, std::shared_ptr<BinJSON::Value>> values{
         {std::string("key\0name", 8), BinJSON::from(binaryString)},
     };
-    std::vector<Buffer> encoded;
+    std::vector<Buffer<>> encoded;
     BinJSON::generate(BinJSON::from(values), encoded);
 
     auto parsed = BinJSON::parse(encoded);
@@ -146,7 +146,7 @@ TEST(BinJSONParseTest, PreservesBinaryStringsAndObjectNames)
 
 TEST(BinJSONParseTest, RejectsInvalidAndTruncatedInput)
 {
-    EXPECT_TRUE(BinJSON::parse(std::vector<Buffer>{})->isError());
+    EXPECT_TRUE(BinJSON::parse(std::vector<Buffer<>>{})->isError());
     EXPECT_TRUE(BinJSON::parse(makeBuffer({} ), 0, {}, 0, 0)->isError());
     auto unknownType = BinJSON::parse(makeBuffer({99}), 0, {}, 0, 0);
     ASSERT_TRUE(unknownType->isError());
@@ -213,7 +213,7 @@ TEST(BinJSONParseTest, RejectsMissingBinaryBuffersAndInvalidOffsets)
 
     std::vector<uint8_t> encodedIndexBeforeBase{1};
     appendUint32(encodedIndexBeforeBase, 1);
-    EXPECT_TRUE(BinJSON::parse(makeBuffer(encodedIndexBeforeBase), 0, {Buffer(0)}, 0, 2)->isError());
+    EXPECT_TRUE(BinJSON::parse(makeBuffer(encodedIndexBeforeBase), 0, {Buffer<>(0)}, 0, 2)->isError());
 }
 
 TEST(BinJSONParseTest, RejectsExcessiveNesting)

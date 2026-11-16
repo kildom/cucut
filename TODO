@@ -4,7 +4,7 @@
   * ControlBlock becomes low level buffer management based on pointers, in namespace `RawBuffer`
   * Buffer becomes wrapper on `RawBuffer`
 * Reconsider alignment size - may be too high
-* Remove binJSON, relay on direct WASM/API calls
+* ~~Remove binJSON, relay on direct WASM/API calls~~
   * Reconsider that: look at labeler.cpp - command does not look worse than direct WASM call.
     Some improvements with BinJSON usage will cause this approach even better, e.g.:
     * common binJSON and overloads functions
@@ -14,5 +14,5 @@
   * initialization with specific size (optionally with specific value)
   * filling with value (memset or element by element)
   * cloning
-* Add BufferRef class that holds pointer to pointer to buffer, like `Buffer&`, but WASM compatible.
-* Allow simple allocations: malloc/free/realloc from WASM interface.
+* ~~Add BufferRef class that holds pointer to pointer to buffer, like `Buffer&`, but WASM compatible.~~
+* ~~Allow simple allocations: malloc/free/realloc from WASM interface.~~

@@ -12,7 +12,7 @@
  * Each pixel of a raster is `pixelBytes` bytes long.
  * Auxilary data can be at the `aux` field.
  */
-template<class T, class Aux = uint8_t[Buffer::alignment - 16]>
+template<class T, class Aux = uint8_t[RawBuffer::alignment - 16]>
 struct Raster
 {
     int32_t width;
@@ -20,7 +20,7 @@ struct Raster
     int32_t stride;
     int32_t pixelBytes;
     Aux aux;
-    T data[sizeof(Aux) == Buffer::alignment - 16 ? 1 : -1];
+    T data[sizeof(Aux) == RawBuffer::alignment - 16 ? 1 : -1];
 
     static constexpr strideAlign = 8;
     static constexpr expectedPixelBytes = sizeof(T);

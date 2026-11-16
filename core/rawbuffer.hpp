@@ -252,6 +252,18 @@ static inline uint8_t* unique(uint8_t* buffer)
     return cbNew->buffer;
 }
 
+/** @brief Return the logical size of a live buffer in bytes. */
+static inline int32_t size(const uint8_t* buffer)
+{
+    return prv::get(buffer)->size;
+}
+
+/** @brief Return the allocated data capacity of a live buffer in bytes. */
+static inline int32_t allocatedSize(const uint8_t* buffer)
+{
+    return prv::get(buffer)->allocatedSize;
+}
+
 /** @brief Return the number of references to a buffer. */
 static inline int32_t refs(const uint8_t* buffer)
 {

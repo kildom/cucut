@@ -26,18 +26,18 @@ void appendDouble(std::vector<uint8_t>& bytes, double value)
     appendUint64(bytes, bits);
 }
 
-std::vector<uint8_t> encodedBytes(const Buffer& buffer)
+std::vector<uint8_t> encodedBytes(const Buffer<>& buffer)
 {
-    auto* data = static_cast<const uint8_t*>(buffer);
+    auto* data = buffer.raw<const uint8_t*>();
     return std::vector<uint8_t>(data, data + buffer.size());
 }
 
 void expectGenerated(const std::shared_ptr<BinJSON::Value>& value,
-    const std::vector<uint8_t>& expected, std::vector<Buffer>* generatedBuffers = nullptr)
+    const std::vector<uint8_t>& expected, std::vector<Buffer<>>* generatedBuffers = nullptr)
 {
-    std::vector<Buffer> buffers;
+    std::vector<Buffer<>> buffers;
     buffers.resize(1);
-    Buffer output(0);
+    Buffer<> output(0);
     BinJSON::generate(value, output, 0, buffers, 1, 1);
     buffers[0] = output;
 
@@ -60,15 +60,15 @@ TEST(BinJSONGenerateTest, GeneratesErrorAsNull)
 
 TEST(BinJSONGenerateTest, GeneratesBinaryAndStoresItsBuffer)
 {
-    Buffer source(3);
-    auto* sourceData = static_cast<uint8_t*>(source);
+    Buffer<> source(3);
+    auto* sourceData = source.raw<uint8_t*>();
     sourceData[0] = 0x12;
     sourceData[1] = 0x34;
     sourceData[2] = 0x56;
 
     std::vector<uint8_t> expected{1};
     appendUint32(expected, 1);
-    std::vector<Buffer> buffers;
+    std::vector<Buffer<>> buffers;
     expectGenerated(BinJSON::from(source), expected, &buffers);
 
     ASSERT_EQ(buffers.size(), 2u);

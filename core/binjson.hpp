@@ -65,7 +65,7 @@ public:
     /** @brief Return the error message, or an empty string when not an error. */
     virtual std::string& error() { static std::string empty; return empty; }
     /** @brief Return the byte buffer held by this value, if any. */
-    virtual Buffer buffer() { return Buffer(0); }
+    virtual Buffer<> buffer() { return Buffer<>(0); }
     /** @brief Return the numeric value, or NaN when not numeric. */
     virtual double number() { return std::numeric_limits<double>::quiet_NaN(); }
     /** @brief Return the string held by this value, or an empty string. */
@@ -140,15 +140,15 @@ public:
     /** @brief Type tag for buffer values. */
     static constexpr BinJSONType type = BinJSONType::BINARY;
     /** @brief Buffer held by this value. */
-    Buffer value;
+    Buffer<> value;
     /** @brief Construct an empty buffer value. */
     Binary(): value() { }
     /** @brief Construct a buffer value sharing @p value. */
-    Binary(const Buffer& value): value(value) { }
+    Binary(const Buffer<>& value): value(value) { }
     /** @brief Return the buffer type tag. */
     BinJSONType getType() override { return type; }
     /** @brief Return the held buffer. */
-    Buffer buffer() override { return value; }
+    Buffer<> buffer() override { return value; }
 };
 
 /** @brief Represents a floating-point number. */
@@ -300,7 +300,7 @@ static std::shared_ptr<Null> from(nullptr_t)
 }
 
 /** @brief Create a buffer value sharing @p value. */
-static std::shared_ptr<Binary> from(const Buffer& value)
+static std::shared_ptr<Binary> from(const Buffer<>& value)
 {
     return std::make_shared<Binary>(value);
 }
@@ -349,13 +349,13 @@ static std::shared_ptr<Object> from(const std::map<std::string, std::shared_ptr<
  * @param arrayOffset  Element index in array where to start putting buffers.
  * @param bufferIndex  Index in binJSON from which to start indexing binary value.
  */
-void generate(const std::shared_ptr<Value>& value, Buffer& buffer, int32_t bufferOffset,
-    std::vector<Buffer>& array, int32_t arrayOffset, int32_t bufferIndex);
+void generate(const std::shared_ptr<Value>& value, Buffer<>& buffer, int32_t bufferOffset,
+    std::vector<Buffer<>>& array, int32_t arrayOffset, int32_t bufferIndex);
 
-static inline void generate(const std::shared_ptr<Value>& value, std::vector<Buffer>& array)
+static inline void generate(const std::shared_ptr<Value>& value, std::vector<Buffer<>>& array)
 {
     array.resize(1);
-    Buffer buffer(0);
+    Buffer<> buffer(0);
     generate(value, buffer, 0, array, 1, 1);
     array[0] = buffer;
 }
@@ -369,15 +369,15 @@ static inline void generate(const std::shared_ptr<Value>& value, std::vector<Buf
  * @param bufferIndex  What is the starting index in binJSON of the binary value.
  * @returns            Parsed top-level value or BinJSON::Error if a parsing error occurs.
  */
-std::shared_ptr<Value> parse(Buffer buffer, int32_t bufferOffset,
-    const std::vector<Buffer>& array, int32_t arrayOffset, int32_t bufferIndex);
+std::shared_ptr<Value> parse(Buffer<> buffer, int32_t bufferOffset,
+    const std::vector<Buffer<>>& array, int32_t arrayOffset, int32_t bufferIndex);
 
 /** @brief Parse binJSON using the default buffer offsets.
  *
  * @param array Buffers containing the binJSON data and referenced binary values.
  * @returns Parsed top-level value, or an BinJSON::Error if the input is empty or parsing fails.
  */
-static inline std::shared_ptr<Value> parse(const std::vector<Buffer>& array)
+static inline std::shared_ptr<Value> parse(const std::vector<Buffer<>>& array)
 {
     if (array.size() == 0) {
         return std::make_shared<Error>("Empty input");

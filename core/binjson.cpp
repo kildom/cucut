@@ -31,7 +31,7 @@ static bool hasBytes(int32_t offset, int32_t count, int32_t limit)
 }
 
 static std::shared_ptr<Value> parseValue(const uint8_t* data, int32_t& offset,
-    int32_t limit, const std::vector<Buffer>& array, int32_t arrayOffset,
+    int32_t limit, const std::vector<Buffer<>>& array, int32_t arrayOffset,
     int32_t bufferIndex, int32_t depth)
 {
     if (depth > maximumParseDepth) {
@@ -155,8 +155,8 @@ static std::shared_ptr<Value> parseValue(const uint8_t* data, int32_t& offset,
 
 }
 
-std::shared_ptr<Value> parse(Buffer buffer, int32_t bufferOffset,
-    const std::vector<Buffer>& array, int32_t arrayOffset, int32_t bufferIndex)
+std::shared_ptr<Value> parse(Buffer<> buffer, int32_t bufferOffset,
+    const std::vector<Buffer<>>& array, int32_t arrayOffset, int32_t bufferIndex)
 {
     if (bufferOffset < 0) {
         return std::make_shared<Error>("Invalid binJSON buffer offset");
@@ -169,29 +169,29 @@ std::shared_ptr<Value> parse(Buffer buffer, int32_t bufferOffset,
     }
 
     int32_t offset = bufferOffset;
-    return parseValue(buffer.to<const uint8_t*>(), offset, buffer.size(),
+    return parseValue(buffer.raw<const uint8_t*>(), offset, buffer.size(),
         array, arrayOffset, bufferIndex, 0);
 }
 
 template<bool grow = true, class T>
-static inline int32_t write(Buffer& buffer, int32_t offset, T* data, int32_t size)
+static inline int32_t write(Buffer<>& buffer, int32_t offset, T* data, int32_t size)
 {
     if (grow) {
         buffer.grow(offset + size);
     }
-    std::memcpy(buffer.to<uint8_t*>() + offset, data, size);
+    std::memcpy(buffer.raw<uint8_t*>() + offset, data, size);
     return offset + size;
 }
 
 
 template<bool grow = true, class T>
-static inline int32_t write(Buffer& buffer, int32_t offset, T& value)
+static inline int32_t write(Buffer<>& buffer, int32_t offset, T& value)
 {
     return write<grow>(buffer, offset, &value, sizeof(T));
 }
 
-static void generateRecursive(const std::shared_ptr<Value>& value, Buffer& buffer,
-    std::vector<Buffer>& array, int32_t bufferIndexOffset)
+static void generateRecursive(const std::shared_ptr<Value>& value, Buffer<>& buffer,
+    std::vector<Buffer<>>& array, int32_t bufferIndexOffset)
 {
     struct {
         uint32_t dataSize;
@@ -204,7 +204,7 @@ static void generateRecursive(const std::shared_ptr<Value>& value, Buffer& buffe
     if (type == BinJSONType::ERROR) {
         type = BinJSONType::NUL;
     }
-    buffer.to<uint8_t*>()[offset] = (uint8_t)(type);
+    buffer.raw<uint8_t*>()[offset] = (uint8_t)(type);
     offset++;
 
     switch (type)
@@ -266,8 +266,8 @@ static void generateRecursive(const std::shared_ptr<Value>& value, Buffer& buffe
 }
 
 
-void generate(const std::shared_ptr<Value>& value, Buffer& buffer, int32_t bufferOffset,
-    std::vector<Buffer>& array, int32_t arrayOffset, int32_t bufferIndex)
+void generate(const std::shared_ptr<Value>& value, Buffer<>& buffer, int32_t bufferOffset,
+    std::vector<Buffer<>>& array, int32_t arrayOffset, int32_t bufferIndex)
 {
     buffer.grow(bufferOffset);
     array.resize(arrayOffset);

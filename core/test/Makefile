@@ -14,6 +14,7 @@ TEST_SOURCES := \
 	src/binjson_generate_test.cpp \
 	src/binjson_parse_test.cpp \
 	src/buffer_test.cpp \
+	src/buffer_assert_test.cpp \
 	src/rawbuffer_test.cpp \
 	gtest/googletest/src/gtest-all.cc \
 	gtest/googlemock/src/gmock-all.cc \

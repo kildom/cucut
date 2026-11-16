@@ -25,18 +25,35 @@ TEST(BinJSONValueTest, NullHasNullTypeAndFlag)
 
 TEST(BinJSONValueTest, BinaryReturnsItsBuffer)
 {
-    Buffer buffer(2);
-    auto* data = static_cast<uint8_t*>(buffer);
+    Buffer<> buffer(2);
+    auto* data = buffer.raw<uint8_t*>();
     data[0] = 0x12;
     data[1] = 0x34;
     BinJSON::Binary value(buffer);
 
     auto result = value.buffer();
-    auto* resultData = static_cast<uint8_t*>(result);
+    auto* resultData = result.raw<uint8_t*>();
     EXPECT_EQ(value.getType(), BinJSON::BinJSONType::BINARY);
     EXPECT_EQ(result.size(), 2);
     EXPECT_EQ(resultData[0], 0x12);
     EXPECT_EQ(resultData[1], 0x34);
+}
+
+TEST(BinJSONValueTest, BinaryRetainsBufferAfterSourceIsDestroyed)
+{
+    std::shared_ptr<BinJSON::Value> value;
+    {
+        Buffer<> buffer(2);
+        buffer.raw<uint8_t*>()[0] = 0x12;
+        buffer.raw<uint8_t*>()[1] = 0x34;
+        value = BinJSON::from(buffer);
+    }
+
+    auto result = value->buffer();
+    value.reset();
+    ASSERT_EQ(result.size(), 2);
+    EXPECT_EQ(result.raw<uint8_t*>()[0], 0x12);
+    EXPECT_EQ(result.raw<uint8_t*>()[1], 0x34);
 }
 
 TEST(BinJSONValueTest, NumberHasTypeAndReturnsItsValue)
@@ -114,8 +131,8 @@ TEST(BinJSONObjectTest, MissingPropertiesAreInsertedAsNull)
 
 TEST(BinJSONFactoryTest, CreatesValuesFromSupportedInputs)
 {
-    Buffer buffer(1);
-    static_cast<uint8_t*>(buffer)[0] = 0xA5;
+    Buffer<> buffer(1);
+    buffer.raw<uint8_t*>()[0] = 0xA5;
     auto nullValue = BinJSON::from(nullptr);
     auto Binary = BinJSON::from(buffer);
     auto numberValue = BinJSON::from(2.5);
