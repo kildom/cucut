@@ -59,6 +59,13 @@ static Any parseValue(const uint8_t* data, int32_t& offset,
         }
         return makeBinary(array[static_cast<int32_t>(index)]);
     }
+    case BinJSONType::BOOLEAN: {
+        uint32_t value;
+        if (!readUint32(data, offset, limit, value)) {
+            return parseError("Unexpected end of binJSON data");
+        }
+        return makeBoolean(value != 0);
+    }
     case BinJSONType::NUMBER: {
         if (!hasBytes(offset, sizeof(double), limit)) {
             return parseError("Unexpected end of binJSON data");
@@ -217,6 +224,11 @@ static void generateRecursive(const Any& value, Buffer<>& buffer,
         uint32_t v = array.size() + bufferIndexOffset;
         CUCUT_ASSERT(v < INT32_MAX, "Invalid bufferIndexOffset");
         array.emplace_back(value->buffer());
+        write(buffer, offset, v);
+        break;
+    }
+    case BinJSONType::BOOLEAN: {
+        uint32_t v = value->boolean() ? 1 : 0;
         write(buffer, offset, v);
         break;
     }

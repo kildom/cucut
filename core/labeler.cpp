@@ -25,7 +25,8 @@ BinJSON::Object binJSON(const LabelInfo& value) {
 
 Buffer<LabelRaster> labeler(
     Buffer<PixelMapRaster> srcBuffer,
-    BinJSON::Array labelInfos)
+    BinJSON::Array labelInfos,
+    bool is8Neighborhood)
 {
     // TODO: Runtime checks because source buffer may come from external source.
     LabelInfo labelInfo;
@@ -65,7 +66,8 @@ Buffer<LabelRaster> labeler(
 BinJSON::Any labelerCommand(BinJSON::Any command) {
     BinJSON::Array labelInfos;
     auto srcBuffer = command->get("bitmap")->buffer<PixelMapRaster>();
-    auto resultRaster = labeler(srcBuffer, labelInfos);
+    auto is8Neighborhood = command->get("is8Neighborhood")->boolean();
+    auto resultRaster = labeler(srcBuffer, labelInfos, is8Neighborhood);
     return binJSONObject({
         { "labeled", binJSON(resultRaster) },
         { "info", labelInfos },

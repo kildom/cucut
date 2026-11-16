@@ -30,6 +30,22 @@ Buffer<> makeBuffer(const std::vector<uint8_t>& bytes)
     return buffer;
 }
 
+TEST(BinJSONParseTest, ParsesBooleanValues)
+{
+    auto falseValue = BinJSON::parse(makeBuffer({2, 0, 0, 0, 0}), 0, {}, 0, 0);
+    auto trueValue = BinJSON::parse(makeBuffer({2, 2, 0, 0, 0}), 0, {}, 0, 0);
+
+    ASSERT_FALSE(falseValue->isError()) << falseValue->error();
+    ASSERT_FALSE(trueValue->isError()) << trueValue->error();
+    EXPECT_EQ(falseValue->getType(), BinJSON::BinJSONType::BOOLEAN);
+    EXPECT_FALSE(falseValue->boolean());
+    EXPECT_TRUE(trueValue->boolean());
+
+    auto truncated = BinJSON::parse(makeBuffer({2, 1, 0}), 0, {}, 0, 0);
+    ASSERT_TRUE(truncated->isError());
+    EXPECT_EQ(truncated->error(), "Unexpected end of binJSON data");
+}
+
 TEST(BinJSONParseTest, ParsesValuesGeneratedByGenerator)
 {
     std::vector<BinJSON::Any> entries{
@@ -90,7 +106,7 @@ TEST(BinJSONParseTest, ResolvesBinaryBuffersUsingConfiguredOffsets)
 
 TEST(BinJSONParseTest, SupportsBufferOffset)
 {
-    std::vector<uint8_t> bytes{0xFF, 2};
+    std::vector<uint8_t> bytes{0xFF, 3};
     appendDouble(bytes, 42.5);
     auto parsed = BinJSON::parse(makeBuffer(bytes), 1, {}, 0, 0);
 
@@ -100,8 +116,8 @@ TEST(BinJSONParseTest, SupportsBufferOffset)
 
 TEST(BinJSONParseTest, ParsesEmptyContainersAndNestedStructures)
 {
-    auto emptyArray = BinJSON::parse(makeBuffer({4, 4, 0, 0, 0, 0, 0, 0, 0}), 0, {}, 0, 0);
-    auto emptyObject = BinJSON::parse(makeBuffer({5, 4, 0, 0, 0, 0, 0, 0, 0}), 0, {}, 0, 0);
+    auto emptyArray = BinJSON::parse(makeBuffer({5, 4, 0, 0, 0, 0, 0, 0, 0}), 0, {}, 0, 0);
+    auto emptyObject = BinJSON::parse(makeBuffer({6, 4, 0, 0, 0, 0, 0, 0, 0}), 0, {}, 0, 0);
 
     ASSERT_FALSE(emptyArray->isError()) << emptyArray->error();
     ASSERT_FALSE(emptyObject->isError()) << emptyObject->error();
@@ -152,20 +168,20 @@ TEST(BinJSONParseTest, RejectsInvalidAndTruncatedInput)
     ASSERT_TRUE(unknownType->isError());
     EXPECT_EQ(unknownType->getType(), BinJSON::BinJSONType::ERROR);
     EXPECT_EQ(unknownType->error(), "Unknown binJSON type");
-    EXPECT_TRUE(BinJSON::parse(makeBuffer({2, 0, 0}), 0, {}, 0, 0)->isError());
+    EXPECT_TRUE(BinJSON::parse(makeBuffer({3, 0, 0}), 0, {}, 0, 0)->isError());
     EXPECT_TRUE(BinJSON::parse(makeBuffer({1, 0, 0, 0, 0}), 0, {}, 0, 0)->isError());
 }
 
 TEST(BinJSONParseTest, RejectsOversizedStringLengths)
 {
-    std::vector<uint8_t> truncatedString{3};
+    std::vector<uint8_t> truncatedString{4};
     appendUint32(truncatedString, 4);
     truncatedString.push_back('x');
     auto truncated = BinJSON::parse(makeBuffer(truncatedString), 0, {}, 0, 0);
     ASSERT_TRUE(truncated->isError());
     EXPECT_EQ(truncated->error(), "Unexpected end of binJSON data");
 
-    std::vector<uint8_t> impossibleString{3};
+    std::vector<uint8_t> impossibleString{4};
     appendUint32(impossibleString, UINT32_MAX);
     auto impossible = BinJSON::parse(makeBuffer(impossibleString), 0, {}, 0, 0);
     ASSERT_TRUE(impossible->isError());
@@ -174,17 +190,17 @@ TEST(BinJSONParseTest, RejectsOversizedStringLengths)
 
 TEST(BinJSONParseTest, RejectsInvalidContainerSizesAndCounts)
 {
-    std::vector<uint8_t> badSize{4};
+    std::vector<uint8_t> badSize{5};
     appendUint32(badSize, 3);
     appendUint32(badSize, 0);
     EXPECT_TRUE(BinJSON::parse(makeBuffer(badSize), 0, {}, 0, 0)->isError());
 
-    std::vector<uint8_t> badCount{4};
+    std::vector<uint8_t> badCount{5};
     appendUint32(badCount, 4);
     appendUint32(badCount, 1);
     EXPECT_TRUE(BinJSON::parse(makeBuffer(badCount), 0, {}, 0, 0)->isError());
 
-    std::vector<uint8_t> trailingData{4};
+    std::vector<uint8_t> trailingData{5};
     appendUint32(trailingData, 5);
     appendUint32(trailingData, 0);
     trailingData.push_back(0xAA);
@@ -192,7 +208,7 @@ TEST(BinJSONParseTest, RejectsInvalidContainerSizesAndCounts)
     ASSERT_TRUE(trailing->isError());
     EXPECT_EQ(trailing->error(), "BinJSON array size does not match its contents");
 
-    std::vector<uint8_t> invalidNameLength{5};
+    std::vector<uint8_t> invalidNameLength{6};
     appendUint32(invalidNameLength, 9);
     appendUint32(invalidNameLength, 1);
     appendUint32(invalidNameLength, UINT32_MAX);
@@ -220,7 +236,7 @@ TEST(BinJSONParseTest, RejectsExcessiveNesting)
 {
     std::vector<uint8_t> nested{0};
     for (int32_t i = 0; i < 257; ++i) {
-        std::vector<uint8_t> parent{4};
+        std::vector<uint8_t> parent{5};
         appendUint32(parent, static_cast<uint32_t>(sizeof(uint32_t) + nested.size()));
         appendUint32(parent, 1);
         parent.insert(parent.end(), nested.begin(), nested.end());

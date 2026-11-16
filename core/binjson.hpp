@@ -25,16 +25,18 @@ enum class BinJSONType : std::uint8_t {
     NUL = 0,
     /** External byte buffer. */
     BINARY = 1,
+    /** Boolean value. */
+    BOOLEAN = 2,
     /** Floating-point number. */
-    NUMBER = 2,
+    NUMBER = 3,
     /** UTF-8 string. */
-    STRING = 3,
+    STRING = 4,
     /** Ordered sequence of values. */
-    ARRAY = 4,
+    ARRAY = 5,
     /** String-keyed collection of values. */
-    OBJECT = 5,
+    OBJECT = 6,
     /** Internal error value; it has no representation in the binJSON format. */
-    ERROR = 6,
+    ERROR = 7,
 };
 
 class ArrayValue;
@@ -69,6 +71,8 @@ public:
     /** @brief Return the held buffer cast to the requested element type. */
     template<class T>
     Buffer<T> buffer() { return static_cast<Buffer<T>>(buffer()); }
+    /** @brief Return the boolean value, or false when not boolean. */
+    virtual bool boolean() { return false; }
     /** @brief Return the numeric value, or NaN when not numeric. */
     virtual double number() { return std::numeric_limits<double>::quiet_NaN(); }
     /** @brief Return the string held by this value, or an empty string. */
@@ -154,6 +158,24 @@ public:
     BinJSONType getType() override { return type; }
     /** @brief Return the held buffer. */
     Buffer<> buffer() override { return value; }
+};
+
+/** @brief Represents a boolean value. */
+class BooleanValue: public AnyValue {
+
+public:
+    /** @brief Type tag for boolean values. */
+    static constexpr BinJSONType type = BinJSONType::BOOLEAN;
+    /** @brief Boolean value. */
+    bool value;
+    /** @brief Construct a false boolean value. */
+    BooleanValue(): value(false) { }
+    /** @brief Construct a boolean value. */
+    BooleanValue(bool value): value(value) { }
+    /** @brief Return the boolean type tag. */
+    BinJSONType getType() override { return type; }
+    /** @brief Return the held boolean. */
+    bool boolean() override { return value; }
 };
 
 /** @brief Represents a floating-point number. */
@@ -300,6 +322,7 @@ public:
 using Any = std::shared_ptr<AnyValue>;
 using Null = std::shared_ptr<NullValue>;
 using Binary = std::shared_ptr<BinaryValue>;
+using Boolean = std::shared_ptr<BooleanValue>;
 using Number = std::shared_ptr<NumberValue>;
 using String = std::shared_ptr<StringValue>;
 using Array = std::shared_ptr<ArrayValue>;
@@ -319,6 +342,11 @@ inline auto makeNull(Args&&... args) {
 template<typename... Args>
 inline auto makeBinary(Args&&... args) {
     return std::make_shared<BinaryValue>(std::forward<Args>(args)...);
+}
+
+template<typename... Args>
+inline auto makeBoolean(Args&&... args) {
+    return std::make_shared<BooleanValue>(std::forward<Args>(args)...);
 }
 
 template<typename... Args>
@@ -346,8 +374,6 @@ inline auto makeError(Args&&... args) {
     return std::make_shared<ErrorValue>(std::forward<Args>(args)...);
 }
 
-
-//Any parse(Buffer data, int32_t offset = 0, int32_t size = -1);
 
 /** @brief Generate binJSON from Value into buffers.
  *
@@ -417,6 +443,11 @@ inline BinJSON::String operator"" _binjson(const char* str, size_t length)
 inline BinJSON::Null binJSON(std::nullptr_t)
 {
     return BinJSON::makeNull();
+}
+
+inline BinJSON::Boolean binJSON(bool value)
+{
+    return BinJSON::makeBoolean(value);
 }
 
 template<typename T, std::enable_if_t<std::is_integral_v<T> || std::is_floating_point_v<T>, int> = 0>

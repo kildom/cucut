@@ -9,10 +9,11 @@ TEST(BinJSONTypeTest, TypeTagsMatchBinJSONEncoding)
 {
     EXPECT_EQ(static_cast<uint8_t>(BinJSON::BinJSONType::NUL), 0);
     EXPECT_EQ(static_cast<uint8_t>(BinJSON::BinJSONType::BINARY), 1);
-    EXPECT_EQ(static_cast<uint8_t>(BinJSON::BinJSONType::NUMBER), 2);
-    EXPECT_EQ(static_cast<uint8_t>(BinJSON::BinJSONType::STRING), 3);
-    EXPECT_EQ(static_cast<uint8_t>(BinJSON::BinJSONType::ARRAY), 4);
-    EXPECT_EQ(static_cast<uint8_t>(BinJSON::BinJSONType::OBJECT), 5);
+    EXPECT_EQ(static_cast<uint8_t>(BinJSON::BinJSONType::BOOLEAN), 2);
+    EXPECT_EQ(static_cast<uint8_t>(BinJSON::BinJSONType::NUMBER), 3);
+    EXPECT_EQ(static_cast<uint8_t>(BinJSON::BinJSONType::STRING), 4);
+    EXPECT_EQ(static_cast<uint8_t>(BinJSON::BinJSONType::ARRAY), 5);
+    EXPECT_EQ(static_cast<uint8_t>(BinJSON::BinJSONType::OBJECT), 6);
 }
 
 TEST(BinJSONValueTest, NullHasNullTypeAndFlag)
@@ -66,6 +67,18 @@ TEST(BinJSONValueTest, BinaryRetainsBufferAfterSourceIsDestroyed)
     ASSERT_EQ(result.size(), 2);
     EXPECT_EQ(result.raw<uint8_t*>()[0], 0x12);
     EXPECT_EQ(result.raw<uint8_t*>()[1], 0x34);
+}
+
+TEST(BinJSONValueTest, BooleanHasTypeAndReturnsItsValue)
+{
+    BinJSON::BooleanValue falseValue;
+    BinJSON::BooleanValue trueValue(true);
+
+    EXPECT_EQ(falseValue.getType(), BinJSON::BinJSONType::BOOLEAN);
+    EXPECT_FALSE(falseValue.boolean());
+    EXPECT_EQ(trueValue.getType(), BinJSON::BinJSONType::BOOLEAN);
+    EXPECT_TRUE(trueValue.boolean());
+    EXPECT_FALSE(BinJSON::NumberValue(1).boolean());
 }
 
 TEST(BinJSONValueTest, NumberHasTypeAndReturnsItsValue)
@@ -144,6 +157,7 @@ TEST(BinJSONObjectTest, MissingPropertiesAreInsertedAsNull)
 TEST(BinJSONFactoryTest, CreatesValuesFromAllOverloads)
 {
     auto nullValue = binJSON(nullptr);
+    auto booleanValue = binJSON(true);
     auto integerValue = binJSON(7);
     auto numberValue = binJSON(2.5);
     auto cStringValue = binJSON("c string");
@@ -161,6 +175,8 @@ TEST(BinJSONFactoryTest, CreatesValuesFromAllOverloads)
     auto objectValue = binJSON(properties);
 
     EXPECT_TRUE(nullValue->isNull());
+    EXPECT_TRUE(booleanValue->boolean());
+    EXPECT_EQ(booleanValue->getType(), BinJSON::BinJSONType::BOOLEAN);
     EXPECT_DOUBLE_EQ(integerValue->number(), 7.0);
     EXPECT_DOUBLE_EQ(numberValue->number(), 2.5);
     EXPECT_EQ(cStringValue->string(), "c string");

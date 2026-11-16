@@ -95,26 +95,31 @@ struct BinJSONBinary {
   uint32_t bufferIndex; // Buffer index in array of buffer provided together with this binJSON
 };
 
-struct BinJSONNumber {
+struct BinJSONBoolean {
   uint8_t type; // = 2
+  uint32_t value; // false is zero, true is non-zero
+};
+
+struct BinJSONNumber {
+  uint8_t type; // = 3
   double value;
 };
 
 struct BinJSONString {
-  uint8_t type; // = 3
+  uint8_t type; // = 4
   uint32_t length; // String length in bytes (number of characters may be less)
   char text[length] // Only UTF-8 encoded string
 };
 
 struct BinJSONArray {
-  uint8_t type; // = 4
+  uint8_t type; // = 5
   uint32_t dataSize; // total size of the following data in bytes
   uint32_t count; // number of array elements
   uint8_t buffer[]; // Buffer containing all elements, packed, without padding
 };
 
 struct BinJSONObject {
-  uint8_t type; // = 5
+  uint8_t type; // = 6
   uint32_t dataSize; // total size of the following data in bytes
   uint32_t count; // number of object properties
   struct {
@@ -174,6 +179,60 @@ The JavaScript/TypeScript communicates with core library WebAssembly module usin
 
   After execution, the function returns a buffer containing array of pointer to buffers. The ownership of
   all of those is transferred to the caller. First array item is binJSON containing response.
+
+### Commands
+
+#### Common types
+
+Those types are commonly used in the core library interface.
+
+```ts
+
+interface PixelRectangle {
+  // Top left pixel of rectangle (inclusive)
+  begin: PixelLocation;
+  // Bottom right pixel of rectangle (exclusive)
+  end: PixelLocation;
+}
+
+interface PixelLocation {
+  x: number;
+  y: number;
+}
+
+```
+
+#### labeler
+
+Find separated objects on the bitmap, label them and provide information about each label.
+
+```ts
+
+interface LabelerCommand {
+  command: "labeler";
+  // Bitmap to process, zero pixels are background, nonzero are objects
+  bitmap: PixelMapRaster;
+  // True to use 8-Neighborhood, false or empty for 4-Neighborhood
+  is8Neighborhood?: boolean;
+}
+
+interface LabelerResponse {
+  // Labeled raster, pixels -1 are background, labels starts at 0.
+  labeled: LabelRaster;
+  // Information about each label
+  info: {
+    // Pixel value with that label (is the same as `info` array index)
+    index: number;
+    // Number of pixels at this object
+    pixelCount: number;
+    // Location of leftmost pixel of topmost row
+    topLeft: PixelLocation;
+    // Bounding box of the object
+    bbox: PixelRectangle;
+  }[];
+}
+
+```
 
 ## CLI
 

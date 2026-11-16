@@ -75,9 +75,20 @@ TEST(BinJSONGenerateTest, GeneratesBinaryAndStoresItsBuffer)
     EXPECT_EQ(encodedBytes(buffers[1]), (std::vector<uint8_t>{0x12, 0x34, 0x56}));
 }
 
+TEST(BinJSONGenerateTest, GeneratesBoolean)
+{
+    std::vector<uint8_t> falseExpected{2};
+    appendUint32(falseExpected, 0);
+    std::vector<uint8_t> trueExpected{2};
+    appendUint32(trueExpected, 1);
+
+    expectGenerated(binJSON(false), falseExpected);
+    expectGenerated(binJSON(true), trueExpected);
+}
+
 TEST(BinJSONGenerateTest, GeneratesNumber)
 {
-    std::vector<uint8_t> expected{2};
+    std::vector<uint8_t> expected{3};
     appendDouble(expected, 12.5);
 
     expectGenerated(binJSON(12.5), expected);
@@ -86,7 +97,7 @@ TEST(BinJSONGenerateTest, GeneratesNumber)
 TEST(BinJSONGenerateTest, GeneratesLengthDelimitedString)
 {
     const std::string text("longer than one byte");
-    std::vector<uint8_t> expected{3};
+    std::vector<uint8_t> expected{4};
     appendUint32(expected, static_cast<uint32_t>(text.size()));
     expected.insert(expected.end(), text.begin(), text.end());
 
@@ -102,13 +113,13 @@ TEST(BinJSONGenerateTest, GeneratesArrayWithNestedValues)
         binJSON(std::string("ok")),
     };
 
-    std::vector<uint8_t> payload{0, 0, 2};
+    std::vector<uint8_t> payload{0, 0, 3};
     appendDouble(payload, 7.0);
-    payload.push_back(3);
+    payload.push_back(4);
     appendUint32(payload, 2);
     payload.insert(payload.end(), {'o', 'k'});
 
-    std::vector<uint8_t> expected{4};
+    std::vector<uint8_t> expected{5};
     appendUint32(expected, static_cast<uint32_t>(sizeof(uint32_t) + payload.size()));
     appendUint32(expected, static_cast<uint32_t>(entries.size()));
     expected.insert(expected.end(), payload.begin(), payload.end());
@@ -128,15 +139,15 @@ TEST(BinJSONGenerateTest, GeneratesObjectWithNamedProperties)
     std::vector<uint8_t> payload;
     appendUint32(payload, 1);
     payload.push_back('a');
-    payload.push_back(2);
+    payload.push_back(3);
     appendDouble(payload, 3.25);
     appendUint32(payload, 4);
     payload.insert(payload.end(), {'l', 'o', 'n', 'g'});
-    payload.push_back(3);
+    payload.push_back(4);
     appendUint32(payload, 5);
     payload.insert(payload.end(), {'v', 'a', 'l', 'u', 'e'});
 
-    std::vector<uint8_t> expected{5};
+    std::vector<uint8_t> expected{6};
     appendUint32(expected, static_cast<uint32_t>(sizeof(uint32_t) + payload.size()));
     appendUint32(expected, static_cast<uint32_t>(properties.size()));
     expected.insert(expected.end(), payload.begin(), payload.end());
