@@ -66,6 +66,9 @@ public:
     virtual std::string& error() { static std::string empty; return empty; }
     /** @brief Return the byte buffer held by this value, if any. */
     virtual Buffer<> buffer() { return Buffer<>(0); }
+    /** @brief Return the held buffer cast to the requested element type. */
+    template<class T>
+    Buffer<T> buffer() { return static_cast<Buffer<T>>(buffer()); }
     /** @brief Return the numeric value, or NaN when not numeric. */
     virtual double number() { return std::numeric_limits<double>::quiet_NaN(); }
     /** @brief Return the string held by this value, or an empty string. */
@@ -137,6 +140,8 @@ inline std::shared_ptr<Value>& Value::get(const std::string&)
 class Binary: public Value {
 
 public:
+    using Value::buffer;
+
     /** @brief Type tag for buffer values. */
     static constexpr BinJSONType type = BinJSONType::BINARY;
     /** @brief Buffer held by this value. */

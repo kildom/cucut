@@ -112,6 +112,17 @@ public:
         return RawBuffer::allocatedSize(buffer);
     }
 
+    /** @brief Ensure this buffer is the sole owner of its allocation.
+     *
+     * When shared, this buffer receives a copy and releases its reference to
+     * the original allocation.
+     */
+    void unique()
+    {
+        CUCUT_ASSERT(buffer != nullptr, "Cannot make a moved-from buffer unique!");
+        buffer = RawBuffer::unique(buffer);
+    }
+
     /** @brief Resize the buffer, detaching it from other owners if needed.
      *
      * Sizes are in bytes and must be non-negative. If keepContent is true,

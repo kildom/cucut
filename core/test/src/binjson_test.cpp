@@ -39,6 +39,18 @@ TEST(BinJSONValueTest, BinaryReturnsItsBuffer)
     EXPECT_EQ(resultData[1], 0x34);
 }
 
+TEST(BinJSONValueTest, BinaryReturnsItsBufferAsRequestedType)
+{
+    Buffer<> buffer(sizeof(uint32_t));
+    *buffer.raw<uint32_t*>() = 0x12345678;
+    std::shared_ptr<BinJSON::Value> value = std::make_shared<BinJSON::Binary>(buffer);
+
+    auto typedBuffer = value->buffer<uint32_t>();
+
+    EXPECT_EQ(typedBuffer.raw<uint32_t*>(), buffer.raw<uint32_t*>());
+    EXPECT_EQ(*typedBuffer, 0x12345678U);
+}
+
 TEST(BinJSONValueTest, BinaryRetainsBufferAfterSourceIsDestroyed)
 {
     std::shared_ptr<BinJSON::Value> value;

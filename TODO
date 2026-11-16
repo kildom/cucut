@@ -1,8 +1,8 @@
 
-* Buffer class must be a template with uint8_t elements by default
-* Separate ControlBlock and Buffer code:
-  * ControlBlock becomes low level buffer management based on pointers, in namespace `RawBuffer`
-  * Buffer becomes wrapper on `RawBuffer`
+* OK Buffer class must be a template with uint8_t elements by default
+* OK Separate ControlBlock and Buffer code:
+  * OK ControlBlock becomes low level buffer management based on pointers, in namespace `RawBuffer`
+  * OK Buffer becomes wrapper on `RawBuffer`
 * Reconsider alignment size - may be too high
 * ~~Remove binJSON, relay on direct WASM/API calls~~
   * Reconsider that: look at labeler.cpp - command does not look worse than direct WASM call.
