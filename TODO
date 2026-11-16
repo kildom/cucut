@@ -10,9 +10,9 @@
     * common binJSON and overloads functions
     * alias of `std::make_shared<BinJSON::XYZ>`, but with good binJSON function won't be needed.
     * alias of `std::shared_ptr<BinJSON::XYZ>`
-* Add common operations to Raster class like:
-  * initialization with specific size (optionally with specific value)
-  * filling with value (memset or element by element)
-  * cloning
+* OK Add common operations to Raster class like:
+  * OK initialization with specific size (optionally with specific value)
+  * OK filling with value (memset or element by element)
+  * OK cloning
 * ~~Add BufferRef class that holds pointer to pointer to buffer, like `Buffer&`, but WASM compatible.~~
 * ~~Allow simple allocations: malloc/free/realloc from WASM interface.~~

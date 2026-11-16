@@ -8,6 +8,7 @@
 #include <type_traits>
 
 #include "buffer.hpp"
+#include "binjson.hpp"
 
 
 /** @brief Generic 2D raster data.
@@ -112,6 +113,14 @@ struct PixelLocation
     int16_t y;
 };
 
+[[maybe_unused]]
+static BinJSON::Object binJSON(const PixelLocation& value) {
+    return binJSONObject({
+        { "x", binJSON(value.x) },
+        { "y", binJSON(value.y) },
+    });
+}
+
 struct PixelRectangle
 {
     /** Inclusive */
@@ -119,6 +128,14 @@ struct PixelRectangle
     /** Exclusive */
     PixelLocation end;
 };
+
+[[maybe_unused]]
+static BinJSON::Object binJSON(const PixelRectangle& value) {
+    return binJSONObject({
+        { "begin", binJSON(value.begin) },
+        { "end", binJSON(value.end) },
+    });
+}
 
 /** @brief Raster containing a map (on/off) pixels
  */

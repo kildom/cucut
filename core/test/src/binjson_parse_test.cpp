@@ -32,16 +32,16 @@ Buffer<> makeBuffer(const std::vector<uint8_t>& bytes)
 
 TEST(BinJSONParseTest, ParsesValuesGeneratedByGenerator)
 {
-    std::vector<std::shared_ptr<BinJSON::Value>> entries{
-        BinJSON::from(nullptr),
-        BinJSON::from(-2.75),
-        BinJSON::from(std::string("hello")),
-        BinJSON::from(std::string("")),
+    std::vector<BinJSON::Any> entries{
+        binJSON(nullptr),
+        binJSON(-2.75),
+        binJSON(std::string("hello")),
+        binJSON(std::string("")),
     };
-    auto object = BinJSON::from(std::map<std::string,
-        std::shared_ptr<BinJSON::Value>>{
-            {"array", BinJSON::from(entries)},
-            {"null", BinJSON::from(nullptr)},
+    auto object = binJSON(std::map<std::string,
+        BinJSON::Any>{
+            {"array", binJSON(entries)},
+            {"null", binJSON(nullptr)},
         });
 
     std::vector<Buffer<>> encoded;
@@ -50,10 +50,10 @@ TEST(BinJSONParseTest, ParsesValuesGeneratedByGenerator)
 
     ASSERT_FALSE(parsed->isError()) << parsed->error();
     ASSERT_EQ(parsed->getType(), BinJSON::BinJSONType::OBJECT);
-    auto parsedObject = parsed->to<BinJSON::Object>();
+    auto parsedObject = parsed->to<BinJSON::ObjectValue>();
     ASSERT_EQ(parsedObject->length(), 2);
     ASSERT_EQ(parsedObject->get("array")->getType(), BinJSON::BinJSONType::ARRAY);
-    auto parsedArray = parsedObject->get("array")->to<BinJSON::Array>();
+    auto parsedArray = parsedObject->get("array")->to<BinJSON::ArrayValue>();
     ASSERT_EQ(parsedArray->length(), 4);
     EXPECT_TRUE(parsedArray->get(0)->isNull());
     EXPECT_DOUBLE_EQ(parsedArray->get(1)->number(), -2.75);
@@ -69,7 +69,7 @@ TEST(BinJSONParseTest, ResolvesBinaryBuffersUsingConfiguredOffsets)
     data[0] = 0x12;
     data[1] = 0x34;
     data[2] = 0x56;
-    auto binary = BinJSON::from(payload);
+    auto binary = binJSON(payload);
     Buffer<> binjson(0);
     std::vector<Buffer<>> input;
     BinJSON::generate(binary, binjson, 0, input, 2, 7);
@@ -110,36 +110,36 @@ TEST(BinJSONParseTest, ParsesEmptyContainersAndNestedStructures)
     EXPECT_EQ(emptyObject->getType(), BinJSON::BinJSONType::OBJECT);
     EXPECT_EQ(emptyObject->length(), 0);
 
-    std::vector<std::shared_ptr<BinJSON::Value>> children{
-        BinJSON::from(std::string("inner")),
-        BinJSON::from(std::vector<std::shared_ptr<BinJSON::Value>>{
-            BinJSON::from(nullptr),
+    std::vector<BinJSON::Any> children{
+        binJSON(std::string("inner")),
+        binJSON(std::vector<BinJSON::Any>{
+            binJSON(nullptr),
         }),
     };
     std::vector<Buffer<>> encoded;
-    BinJSON::generate(BinJSON::from(children), encoded);
+    BinJSON::generate(binJSON(children), encoded);
     auto parsed = BinJSON::parse(encoded);
 
     ASSERT_FALSE(parsed->isError()) << parsed->error();
-    auto array = parsed->to<BinJSON::Array>();
+    auto array = parsed->to<BinJSON::ArrayValue>();
     ASSERT_EQ(array->length(), 2);
     EXPECT_EQ(array->get(0)->string(), "inner");
     ASSERT_EQ(array->get(1)->getType(), BinJSON::BinJSONType::ARRAY);
-    EXPECT_TRUE(array->get(1)->to<BinJSON::Array>()->get(0)->isNull());
+    EXPECT_TRUE(array->get(1)->to<BinJSON::ArrayValue>()->get(0)->isNull());
 }
 
 TEST(BinJSONParseTest, PreservesBinaryStringsAndObjectNames)
 {
     const std::string binaryString("a\0b", 3);
-    std::map<std::string, std::shared_ptr<BinJSON::Value>> values{
-        {std::string("key\0name", 8), BinJSON::from(binaryString)},
+    std::map<std::string, BinJSON::Any> values{
+        {std::string("key\0name", 8), binJSON(binaryString)},
     };
     std::vector<Buffer<>> encoded;
-    BinJSON::generate(BinJSON::from(values), encoded);
+    BinJSON::generate(binJSON(values), encoded);
 
     auto parsed = BinJSON::parse(encoded);
     ASSERT_FALSE(parsed->isError()) << parsed->error();
-    auto object = parsed->to<BinJSON::Object>();
+    auto object = parsed->to<BinJSON::ObjectValue>();
     ASSERT_EQ(object->length(), 1);
     EXPECT_EQ(object->get(std::string("key\0name", 8))->string(), binaryString);
 }

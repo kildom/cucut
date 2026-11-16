@@ -1,3 +1,6 @@
 {
-    "cmake.sourceDirectory": "/home/dok/my/CuCut/core/test/gtest"
+    "C_Cpp.files.exclude": {
+        "**/core/test/gtest/**": true,
+        "**/core/tools/**": true
+    }
 }

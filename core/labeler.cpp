@@ -13,9 +13,19 @@ struct LabelInfo
 };
 
 
+BinJSON::Object binJSON(const LabelInfo& value) {
+    return binJSONObject({
+        { "index", binJSON(value.index) },
+        { "pixelCount", binJSON(value.pixelCount) },
+        { "topLeft", binJSON(value.topLeft) },
+        { "bbox", binJSON(value.bbox) },
+    });
+}
+
+
 Buffer<LabelRaster> labeler(
     Buffer<PixelMapRaster> srcBuffer,
-    std::shared_ptr<BinJSON::Array> labelInfos)
+    BinJSON::Array labelInfos)
 {
     // TODO: Runtime checks because source buffer may come from external source.
     LabelInfo labelInfo;
@@ -52,53 +62,11 @@ Buffer<LabelRaster> labeler(
     return dstBuffer;
 }
 
-std::shared_ptr<BinJSON::Number> binJSON(int32_t value) {
-    return std::make_shared<BinJSON::Number>(value);
-}
-
-std::shared_ptr<BinJSON::Number> binJSON(int32_t value) {
-    return std::make_shared<BinJSON::Number>(value);
-}
-
-std::shared_ptr<BinJSON::Object> binJSON(const PixelLocation& value) {
-    return std::make_shared<BinJSON::Object>(std::map<std::string, std::shared_ptr<BinJSON::Value>> {
-        { "x", binJSON(value.x) },
-        { "y", binJSON(value.y) },
-    });
-}
-
-std::shared_ptr<BinJSON::Object> binJSON(const PixelRectangle& value) {
-    return std::make_shared<BinJSON::Object>(std::map<std::string, std::shared_ptr<BinJSON::Value>> {
-        { "begin", binJSON(value.begin) },
-        { "end", binJSON(value.end) },
-    });
-}
-
-std::shared_ptr<BinJSON::Object> binJSON(const LabelInfo& value) {
-    return std::make_shared<BinJSON::Object>(std::map<std::string, std::shared_ptr<BinJSON::Value>> {
-        { "index", binJSON(value.index) },
-        { "pixelCount", binJSON(value.pixelCount) },
-        { "topLeft", binJSON(value.topLeft) },
-        { "bbox", binJSON(value.bbox) },
-    });
-}
-
-template<class T>
-std::shared_ptr<BinJSON::Binary> binJSON(const Buffer<T>& buffer) {
-    return std::make_shared<BinJSON::Binary>(static_cast<Buffer<>>(buffer));
-}
-
-template<class T>
-std::shared_ptr<BinJSON::Object> toBinJSONArray(const T* array, int32_t size) {
-    std::vector<std::shared_ptr<BinJSON::Value>> vect(array, array + size);
-    return std::make_shared<BinJSON::Array>(std::move(vect));
-}
-
-std::shared_ptr<BinJSON::Value> labelerCommand(std::shared_ptr<BinJSON::Value> command) {
-    std::shared_ptr<BinJSON::Array> labelInfos;
+BinJSON::Any labelerCommand(BinJSON::Any command) {
+    BinJSON::Array labelInfos;
     auto srcBuffer = command->get("bitmap")->buffer<PixelMapRaster>();
     auto resultRaster = labeler(srcBuffer, labelInfos);
-    return std::make_shared<BinJSON::Object>(std::map<std::string, std::shared_ptr<BinJSON::Value>> {
+    return binJSONObject({
         { "labeled", binJSON(resultRaster) },
         { "info", labelInfos },
     });

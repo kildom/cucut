@@ -17,7 +17,7 @@ TEST(BinJSONTypeTest, TypeTagsMatchBinJSONEncoding)
 
 TEST(BinJSONValueTest, NullHasNullTypeAndFlag)
 {
-    BinJSON::Null value;
+    BinJSON::NullValue value;
 
     EXPECT_EQ(value.getType(), BinJSON::BinJSONType::NUL);
     EXPECT_TRUE(value.isNull());
@@ -29,7 +29,7 @@ TEST(BinJSONValueTest, BinaryReturnsItsBuffer)
     auto* data = buffer.raw<uint8_t*>();
     data[0] = 0x12;
     data[1] = 0x34;
-    BinJSON::Binary value(buffer);
+    BinJSON::BinaryValue value(buffer);
 
     auto result = value.buffer();
     auto* resultData = result.raw<uint8_t*>();
@@ -43,7 +43,7 @@ TEST(BinJSONValueTest, BinaryReturnsItsBufferAsRequestedType)
 {
     Buffer<> buffer(sizeof(uint32_t));
     *buffer.raw<uint32_t*>() = 0x12345678;
-    std::shared_ptr<BinJSON::Value> value = std::make_shared<BinJSON::Binary>(buffer);
+    BinJSON::Any value = BinJSON::makeBinary(buffer);
 
     auto typedBuffer = value->buffer<uint32_t>();
 
@@ -53,12 +53,12 @@ TEST(BinJSONValueTest, BinaryReturnsItsBufferAsRequestedType)
 
 TEST(BinJSONValueTest, BinaryRetainsBufferAfterSourceIsDestroyed)
 {
-    std::shared_ptr<BinJSON::Value> value;
+    BinJSON::Any value;
     {
         Buffer<> buffer(2);
         buffer.raw<uint8_t*>()[0] = 0x12;
         buffer.raw<uint8_t*>()[1] = 0x34;
-        value = BinJSON::from(buffer);
+        value = binJSON(buffer);
     }
 
     auto result = value->buffer();
@@ -70,16 +70,16 @@ TEST(BinJSONValueTest, BinaryRetainsBufferAfterSourceIsDestroyed)
 
 TEST(BinJSONValueTest, NumberHasTypeAndReturnsItsValue)
 {
-    BinJSON::Number value(12.5);
+    BinJSON::NumberValue value(12.5);
 
     EXPECT_EQ(value.getType(), BinJSON::BinJSONType::NUMBER);
     EXPECT_DOUBLE_EQ(value.number(), 12.5);
-    EXPECT_TRUE(std::isnan(BinJSON::Null().number()));
+    EXPECT_TRUE(std::isnan(BinJSON::NullValue().number()));
 }
 
 TEST(BinJSONValueTest, StringSupportsLengthDelimitedInput)
 {
-    BinJSON::String value("hello", 3);
+    BinJSON::StringValue value("hello", 3);
 
     EXPECT_EQ(value.getType(), BinJSON::BinJSONType::STRING);
     EXPECT_EQ(value.string(), "hel");
@@ -87,9 +87,9 @@ TEST(BinJSONValueTest, StringSupportsLengthDelimitedInput)
 
 TEST(BinJSONValueTest, ErrorStoresAndExposesItsMessage)
 {
-    BinJSON::Error empty;
-    BinJSON::Error cStringError("invalid input");
-    BinJSON::Error stringError(std::string("parse failed"));
+    BinJSON::ErrorValue empty;
+    BinJSON::ErrorValue cStringError("invalid input");
+    BinJSON::ErrorValue stringError(std::string("parse failed"));
 
     EXPECT_EQ(empty.getType(), BinJSON::BinJSONType::ERROR);
     EXPECT_TRUE(empty.isError());
@@ -103,18 +103,18 @@ TEST(BinJSONValueTest, ErrorStoresAndExposesItsMessage)
 
 TEST(BinJSONValueTest, ToReturnsSelfOnMatchingTypeAndDefaultOtherwise)
 {
-    auto value = std::make_shared<BinJSON::Number>(12.5);
+    auto value = BinJSON::makeNumber(12.5);
 
-    EXPECT_EQ(value->to<BinJSON::Number>(), value);
-    auto otherType = value->to<BinJSON::String>();
+    EXPECT_EQ(value->to<BinJSON::NumberValue>(), value);
+    auto otherType = value->to<BinJSON::StringValue>();
     EXPECT_EQ(otherType->getType(), BinJSON::BinJSONType::STRING);
     EXPECT_TRUE(otherType->string().empty());
 }
 
 TEST(BinJSONArrayTest, SupportsLengthResizeAndIndexedAccess)
 {
-    BinJSON::Array value(1);
-    auto entry = BinJSON::from(7.0);
+    BinJSON::ArrayValue value(1);
+    auto entry = binJSON(7.0);
     value[0] = entry;
 
     ASSERT_EQ(value.length(), 1);
@@ -128,39 +128,78 @@ TEST(BinJSONArrayTest, SupportsLengthResizeAndIndexedAccess)
 
 TEST(BinJSONObjectTest, MissingPropertiesAreInsertedAsNull)
 {
-    BinJSON::Object value;
+    BinJSON::ObjectValue value;
 
     auto& missing = value["missing"];
     ASSERT_NE(missing, nullptr);
     EXPECT_TRUE(missing->isNull());
     EXPECT_EQ(value.length(), 1);
 
-    auto entry = BinJSON::from(7.0);
+    auto entry = binJSON(7.0);
     value["present"] = entry;
     EXPECT_EQ(value.length(), 2);
     EXPECT_EQ(value.get("present"), entry);
 }
 
-TEST(BinJSONFactoryTest, CreatesValuesFromSupportedInputs)
+TEST(BinJSONFactoryTest, CreatesValuesFromAllOverloads)
 {
-    Buffer<> buffer(1);
-    buffer.raw<uint8_t*>()[0] = 0xA5;
-    auto nullValue = BinJSON::from(nullptr);
-    auto Binary = BinJSON::from(buffer);
-    auto numberValue = BinJSON::from(2.5);
-    auto stringValue = BinJSON::from(std::string("text"));
-    std::vector<std::shared_ptr<BinJSON::Value>> entries{numberValue};
-    auto arrayValue = BinJSON::from(entries);
-    std::map<std::string, std::shared_ptr<BinJSON::Value>> properties{
+    auto nullValue = binJSON(nullptr);
+    auto integerValue = binJSON(7);
+    auto numberValue = binJSON(2.5);
+    auto cStringValue = binJSON("c string");
+    auto stringValue = binJSON(std::string("text"));
+    Buffer<uint16_t> buffer(sizeof(uint16_t));
+    *buffer.raw<uint16_t*>() = 0xA55A;
+    auto binaryValue = binJSON(buffer);
+    std::vector<BinJSON::Any> vectorEntries{integerValue, numberValue};
+    auto vectorValue = binJSON(vectorEntries);
+    std::array<BinJSON::Any, 2> arrayEntries{cStringValue, stringValue};
+    auto arrayValue = binJSON(arrayEntries);
+    std::map<std::string, BinJSON::Any> properties{
+        {"array", arrayValue},
         {"text", stringValue}};
-    auto objectValue = BinJSON::from(properties);
+    auto objectValue = binJSON(properties);
 
     EXPECT_TRUE(nullValue->isNull());
-    EXPECT_EQ(Binary->buffer().size(), 1);
+    EXPECT_DOUBLE_EQ(integerValue->number(), 7.0);
     EXPECT_DOUBLE_EQ(numberValue->number(), 2.5);
+    EXPECT_EQ(cStringValue->string(), "c string");
     EXPECT_EQ(stringValue->string(), "text");
-    EXPECT_EQ(arrayValue->get(0), numberValue);
+    EXPECT_EQ(binaryValue->buffer<uint16_t>().raw<uint16_t*>(), buffer.raw<uint16_t*>());
+    ASSERT_EQ(vectorValue->length(), 2);
+    EXPECT_EQ(vectorValue->get(0), integerValue);
+    EXPECT_EQ(vectorValue->get(1), numberValue);
+    ASSERT_EQ(arrayValue->length(), 2);
+    EXPECT_EQ(arrayValue->get(0), cStringValue);
+    EXPECT_EQ(arrayValue->get(1), stringValue);
+    EXPECT_EQ(objectValue->get("array"), arrayValue);
     EXPECT_EQ(objectValue->get("text"), stringValue);
+}
+
+TEST(BinJSONArrayFactoryTest, CreatesArrayFromPointerAndSize)
+{
+    std::array<BinJSON::Any, 2> entries{binJSON(7), binJSON("text")};
+
+    auto value = binJSONArray(entries.data(), static_cast<int32_t>(entries.size()));
+
+    ASSERT_EQ(value->length(), 2);
+    EXPECT_EQ(value->get(0), entries[0]);
+    EXPECT_EQ(value->get(1), entries[1]);
+}
+
+TEST(BinJSONObjectFactoryTest, CreatesObjectFromInitializerList)
+{
+    auto text = binJSON("text");
+    auto count = binJSON(2);
+
+    auto value = binJSONObject({
+        {"text", text},
+        {"count", count},
+    });
+
+    ASSERT_EQ(value->length(), 2);
+    EXPECT_EQ(value->get("text"), text);
+    EXPECT_EQ(value->get("count"), count);
 }
 
 TEST(BinJSONLiteralTest, CreatesNumberAndStringValues)

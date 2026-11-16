@@ -1,4 +1,5 @@
 
+#include <cstdint>
 
 #include "binjson.hpp"
 
@@ -8,9 +9,9 @@ namespace {
 
 static constexpr int32_t maximumParseDepth = 256;
 
-static std::shared_ptr<Value> parseError(const char* message)
+static Any parseError(const char* message)
 {
-    return std::make_shared<Error>(message);
+    return makeError(message);
 }
 
 static bool readUint32(const uint8_t* data, int32_t& offset, int32_t limit,
@@ -30,7 +31,7 @@ static bool hasBytes(int32_t offset, int32_t count, int32_t limit)
     return offset >= 0 && count >= 0 && offset <= limit && count <= limit - offset;
 }
 
-static std::shared_ptr<Value> parseValue(const uint8_t* data, int32_t& offset,
+static Any parseValue(const uint8_t* data, int32_t& offset,
     int32_t limit, const std::vector<Buffer<>>& array, int32_t arrayOffset,
     int32_t bufferIndex, int32_t depth)
 {
@@ -45,7 +46,7 @@ static std::shared_ptr<Value> parseValue(const uint8_t* data, int32_t& offset,
     switch (type)
     {
     case BinJSONType::NUL:
-        return std::make_shared<Null>();
+        return makeNull();
     case BinJSONType::BINARY: {
         uint32_t encodedIndex;
         if (!readUint32(data, offset, limit, encodedIndex)) {
@@ -56,7 +57,7 @@ static std::shared_ptr<Value> parseValue(const uint8_t* data, int32_t& offset,
         if (index < 0 || static_cast<uint64_t>(index) >= array.size()) {
             return parseError("Binary buffer index is out of range");
         }
-        return std::make_shared<Binary>(array[static_cast<int32_t>(index)]);
+        return makeBinary(array[static_cast<int32_t>(index)]);
     }
     case BinJSONType::NUMBER: {
         if (!hasBytes(offset, sizeof(double), limit)) {
@@ -65,7 +66,7 @@ static std::shared_ptr<Value> parseValue(const uint8_t* data, int32_t& offset,
         double value;
         std::memcpy(&value, data + offset, sizeof(value));
         offset += sizeof(value);
-        return std::make_shared<Number>(value);
+        return makeNumber(value);
     }
     case BinJSONType::STRING: {
         uint32_t encodedLength;
@@ -77,7 +78,7 @@ static std::shared_ptr<Value> parseValue(const uint8_t* data, int32_t& offset,
         if (!hasBytes(offset, length, limit)) {
             return parseError("Unexpected end of binJSON data");
         }
-        auto value = std::make_shared<String>(
+        auto value = makeString(
             reinterpret_cast<const char*>(data + offset), length);
         offset += length;
         return value;
@@ -103,7 +104,7 @@ static std::shared_ptr<Value> parseValue(const uint8_t* data, int32_t& offset,
             if (count > static_cast<uint32_t>(containerEnd - offset)) {
                 return parseError("Invalid binJSON array element count");
             }
-            auto result = std::make_shared<Array>();
+            auto result = makeArray();
             result->value.reserve(count);
             for (uint32_t i = 0; i < count; ++i) {
                 auto element = parseValue(data, offset, containerEnd,
@@ -123,7 +124,7 @@ static std::shared_ptr<Value> parseValue(const uint8_t* data, int32_t& offset,
             / (static_cast<int32_t>(sizeof(uint32_t)) + 1))) {
             return parseError("Invalid binJSON object property count");
         }
-        auto result = std::make_shared<Object>();
+        auto result = makeObject();
         for (uint32_t i = 0; i < count; ++i) {
             uint32_t encodedNameLength;
             if (!readUint32(data, offset, containerEnd, encodedNameLength)
@@ -155,17 +156,17 @@ static std::shared_ptr<Value> parseValue(const uint8_t* data, int32_t& offset,
 
 }
 
-std::shared_ptr<Value> parse(Buffer<> buffer, int32_t bufferOffset,
+Any parse(Buffer<> buffer, int32_t bufferOffset,
     const std::vector<Buffer<>>& array, int32_t arrayOffset, int32_t bufferIndex)
 {
     if (bufferOffset < 0) {
-        return std::make_shared<Error>("Invalid binJSON buffer offset");
+        return makeError("Invalid binJSON buffer offset");
     }
     if (arrayOffset < 0 || bufferIndex < 0) {
-        return std::make_shared<Error>("Invalid binJSON buffer index offset");
+        return makeError("Invalid binJSON buffer index offset");
     }
     if (bufferOffset > buffer.size()) {
-        return std::make_shared<Error>("BinJSON buffer offset is out of range");
+        return makeError("BinJSON buffer offset is out of range");
     }
 
     int32_t offset = bufferOffset;
@@ -190,7 +191,7 @@ static inline int32_t write(Buffer<>& buffer, int32_t offset, T& value)
     return write<grow>(buffer, offset, &value, sizeof(T));
 }
 
-static void generateRecursive(const std::shared_ptr<Value>& value, Buffer<>& buffer,
+static void generateRecursive(const Any& value, Buffer<>& buffer,
     std::vector<Buffer<>>& array, int32_t bufferIndexOffset)
 {
     struct {
@@ -232,7 +233,7 @@ static void generateRecursive(const std::shared_ptr<Value>& value, Buffer<>& buf
         break;
     }
     case BinJSONType::ARRAY: {
-        auto v = value->to<Array>();
+        auto v = value->to<ArrayValue>();
         write(buffer, offset, containerHeader);
         for (auto element : v->value) {
             generateRecursive(element, buffer, array, bufferIndexOffset);
@@ -244,7 +245,7 @@ static void generateRecursive(const std::shared_ptr<Value>& value, Buffer<>& buf
         break;
     }
     case BinJSONType::OBJECT: {
-        auto v = value->to<Object>();
+        auto v = value->to<ObjectValue>();
         write(buffer, offset, containerHeader);
         for (auto property : v->value) {
             uint32_t len = property.first.length();
@@ -266,7 +267,7 @@ static void generateRecursive(const std::shared_ptr<Value>& value, Buffer<>& buf
 }
 
 
-void generate(const std::shared_ptr<Value>& value, Buffer<>& buffer, int32_t bufferOffset,
+void generate(const Any& value, Buffer<>& buffer, int32_t bufferOffset,
     std::vector<Buffer<>>& array, int32_t arrayOffset, int32_t bufferIndex)
 {
     buffer.grow(bufferOffset);

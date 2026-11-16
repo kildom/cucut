@@ -32,7 +32,7 @@ std::vector<uint8_t> encodedBytes(const Buffer<>& buffer)
     return std::vector<uint8_t>(data, data + buffer.size());
 }
 
-void expectGenerated(const std::shared_ptr<BinJSON::Value>& value,
+void expectGenerated(const BinJSON::Any& value,
     const std::vector<uint8_t>& expected, std::vector<Buffer<>>* generatedBuffers = nullptr)
 {
     std::vector<Buffer<>> buffers;
@@ -50,12 +50,12 @@ void expectGenerated(const std::shared_ptr<BinJSON::Value>& value,
 
 TEST(BinJSONGenerateTest, GeneratesNull)
 {
-    expectGenerated(BinJSON::from(nullptr), {0});
+    expectGenerated(binJSON(nullptr), {0});
 }
 
 TEST(BinJSONGenerateTest, GeneratesErrorAsNull)
 {
-    expectGenerated(std::make_shared<BinJSON::Error>("generation failed"), {0});
+    expectGenerated(BinJSON::makeError("generation failed"), {0});
 }
 
 TEST(BinJSONGenerateTest, GeneratesBinaryAndStoresItsBuffer)
@@ -69,7 +69,7 @@ TEST(BinJSONGenerateTest, GeneratesBinaryAndStoresItsBuffer)
     std::vector<uint8_t> expected{1};
     appendUint32(expected, 1);
     std::vector<Buffer<>> buffers;
-    expectGenerated(BinJSON::from(source), expected, &buffers);
+    expectGenerated(binJSON(source), expected, &buffers);
 
     ASSERT_EQ(buffers.size(), 2u);
     EXPECT_EQ(encodedBytes(buffers[1]), (std::vector<uint8_t>{0x12, 0x34, 0x56}));
@@ -80,7 +80,7 @@ TEST(BinJSONGenerateTest, GeneratesNumber)
     std::vector<uint8_t> expected{2};
     appendDouble(expected, 12.5);
 
-    expectGenerated(BinJSON::from(12.5), expected);
+    expectGenerated(binJSON(12.5), expected);
 }
 
 TEST(BinJSONGenerateTest, GeneratesLengthDelimitedString)
@@ -90,16 +90,16 @@ TEST(BinJSONGenerateTest, GeneratesLengthDelimitedString)
     appendUint32(expected, static_cast<uint32_t>(text.size()));
     expected.insert(expected.end(), text.begin(), text.end());
 
-    expectGenerated(BinJSON::from(text), expected);
+    expectGenerated(binJSON(text), expected);
 }
 
 TEST(BinJSONGenerateTest, GeneratesArrayWithNestedValues)
 {
-    std::vector<std::shared_ptr<BinJSON::Value>> entries{
-        BinJSON::from(nullptr),
-        std::make_shared<BinJSON::Error>("nested error"),
-        BinJSON::from(7.0),
-        BinJSON::from(std::string("ok")),
+    std::vector<BinJSON::Any> entries{
+        binJSON(nullptr),
+        BinJSON::makeError("nested error"),
+        binJSON(7.0),
+        binJSON(std::string("ok")),
     };
 
     std::vector<uint8_t> payload{0, 0, 2};
@@ -113,14 +113,14 @@ TEST(BinJSONGenerateTest, GeneratesArrayWithNestedValues)
     appendUint32(expected, static_cast<uint32_t>(entries.size()));
     expected.insert(expected.end(), payload.begin(), payload.end());
 
-    expectGenerated(BinJSON::from(entries), expected);
+    expectGenerated(binJSON(entries), expected);
 }
 
 TEST(BinJSONGenerateTest, GeneratesObjectWithNamedProperties)
 {
-    auto text = BinJSON::from(std::string("value"));
-    auto number = BinJSON::from(3.25);
-    std::map<std::string, std::shared_ptr<BinJSON::Value>> properties{
+    auto text = binJSON(std::string("value"));
+    auto number = binJSON(3.25);
+    std::map<std::string, BinJSON::Any> properties{
         {"a", number},
         {"long", text},
     };
@@ -141,7 +141,7 @@ TEST(BinJSONGenerateTest, GeneratesObjectWithNamedProperties)
     appendUint32(expected, static_cast<uint32_t>(properties.size()));
     expected.insert(expected.end(), payload.begin(), payload.end());
 
-    expectGenerated(BinJSON::from(properties), expected);
+    expectGenerated(binJSON(properties), expected);
 }
 
 }
