@@ -1,8 +1,8 @@
 
-#include "buffer.hpp"
-#include "raster.hpp"
-#include "wasm.hpp"
-#include "binjson.hpp"
+#include "../buffer.hpp"
+#include "../raster.hpp"
+#include "../binjson.hpp"
+#include "../commands.hpp"
 
 struct LabelInfo
 {
@@ -52,7 +52,7 @@ Buffer<LabelRaster> labeler(
                 labelInfo.topLeft.x = x;
                 labelInfo.topLeft.y = y;
                 labelCount++;
-                //labelObject(srcRaster, dstRaster, width, height, srcStride, dstStride, &labelInfo, x, y);
+                //labelObject(srcRaster, dstRaster, width, height, srcStride, dstStride, is8Neighborhood, &labelInfo, x, y);
                 labelInfos->get(labelInfo.index) = binJSON(labelInfo);
             }
             srcPixel++;
@@ -63,22 +63,18 @@ Buffer<LabelRaster> labeler(
     return dstBuffer;
 }
 
-BinJSON::Any labelerCommand(BinJSON::Any command) {
+static BinJSON::Any labeler(BinJSON::Any command) {
     BinJSON::Array labelInfos;
+
     auto srcBuffer = command->get("bitmap")->buffer<PixelMapRaster>();
     auto is8Neighborhood = command->get("is8Neighborhood")->boolean();
+
     auto resultRaster = labeler(srcBuffer, labelInfos, is8Neighborhood);
+
     return binJSONObject({
         { "labeled", binJSON(resultRaster) },
         { "info", labelInfos },
     });
 }
 
-
-/*WASM_EXPORT(labeler)
-void* labelerWasm(void* bitmap, void** infosBuffer) {
-    Buffer<> infos(*infosBuffer);
-    auto result = labeler(Buffer<>(bitmap), infos);
-    return result.shareRaw<void*>();
-}
-*/
+REGISTER_COMMAND(labeler);
