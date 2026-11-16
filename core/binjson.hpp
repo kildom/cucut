@@ -207,8 +207,8 @@ public:
     Array(size_t size): value(size) { }
     /** @brief Construct an array by copying @p value. */
     Array(const std::vector<std::shared_ptr<Value>> &value): value(value) { }
-    template <size_t N>
-    Array(const std::vector<std::array<Value, N>> &value): value(value) { }
+    /** @brief Construct an array by moving @p value. */
+    Array(std::vector<std::shared_ptr<Value>>&& value) : value(std::move(value)) { }
 
     /** @brief Return the array type tag. */
     BinJSONType getType() override { return type; }
@@ -246,6 +246,8 @@ public:
     Object(): value() { }
     /** @brief Construct an object by copying @p value. */
     Object(const std::map<std::string, std::shared_ptr<Value>> &value): value(value) { }
+    /** @brief Construct an object by moving @p value. */
+    Object(std::map<std::string, std::shared_ptr<Value>>&& value) : value(std::move(value)) { }
 
     /** @brief Return the object type tag. */
     BinJSONType getType() override { return type; }

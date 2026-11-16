@@ -21,6 +21,12 @@ struct Raster
     int32_t pixelBytes;
     Aux aux;
     T data[sizeof(Aux) == Buffer::alignment - 16 ? 1 : -1];
+
+    static constexpr strideAlign = 8;
+    static constexpr expectedPixelBytes = sizeof(T);
+    static constexpr calcStride(int32_t width) {
+        return (width * expectedPixelBytes + strideAlign - 1) / strideAlign;
+    }
 };
 
 /** @brief Structure containing pixel location.
@@ -33,13 +39,21 @@ struct PixelLocation
     int16_t y;
 };
 
+struct PixelRectangle
+{
+    /** Inclusive */
+    PixelLocation begin;
+    /** Exclusive */
+    PixelLocation end;
+};
+
 /** @brief Raster containing a map (on/off) pixels
  */
 using PixelMapRaster = Raster<uint8_t>;
 
 /** @brief Raster containing labels for each pixel
  */
-using LabelRaster = Raster<uint16_t>;
+using LabelRaster = Raster<int16_t>;
 
 /** @brief Raster containing a queue of pixels
  * 

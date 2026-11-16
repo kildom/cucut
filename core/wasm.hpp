@@ -3,12 +3,16 @@
 
 #if defined(__wasm__) || defined(__wasm32__) || defined(__wasm64__)
 
-
 // TODO: Finalize wasm export 
 
 /** @brief Mark function as export for WebAssembly module.
  * 
  */
+#define WASM_EXPORT(name) \
+    extern "C"
+
+#else
+
 #define WASM_EXPORT(name) \
     extern "C"
 

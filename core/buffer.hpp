@@ -443,7 +443,7 @@ public:
     {
         CUCUT_ASSERT(newSize >= 0, "Size cannot be negative. It is %d.", newSize);
         auto cb = ControlBlock::get(buffer);
-        auto cbNew = ControlBlock::resize(cb, newSize, ControlBlock::alignment + newSize / 4, true, keepContent);
+        auto cbNew = ControlBlock::resize(cb, newSize, alignment + newSize / 4, true, keepContent);
         buffer = cbNew->buffer;
     }
 
@@ -488,6 +488,17 @@ public:
     T to()
     {
         return (T)(*this);
+    }
+
+    template<class T>
+    T as()
+    {
+        return (T)(*this);
+    }
+
+    Buffer& inc() {
+        ControlBlock::inc(ControlBlock::get(buffer));
+        return *this;
     }
 
     /** @brief WebAssembly wrapper functions.

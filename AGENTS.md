@@ -67,6 +67,9 @@ The separation extension is done in following way:
 - create path that removes those pixels (t.b.d. how to do it). Remember to use tool smaller by defined offset.
 - simulate this path and skip pixels that were already removed when going to next track.
 
+If separation extension is done with bigger tool, check for leftovers inside extension area.
+If there are some, remove them using separation tool.
+
 ## Core interface
 
 Core library interface is using structures similar to JSON, but binary instead to reduce parsing on C++ side.
