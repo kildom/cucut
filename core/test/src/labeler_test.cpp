@@ -105,6 +105,59 @@ TEST(LabelerTest, EightNeighborhoodConnectsDiagonalPixels)
     expectPoint(info->get("bbox")->get("end"), 3, 3);
 }
 
+TEST(LabelerTest, FourNeighborhoodTShapeUsesQueueForUnvisitedBranches)
+{
+    const auto result = runLabeler({
+        "010",
+        "111",
+        "010",
+    }, false);
+
+    ASSERT_EQ(result.info->length(), 1);
+    EXPECT_EQ(number(result.info->get(0), "pixelCount"), 5);
+    EXPECT_EQ(pixel(result.raster, 1, 0), 0);
+    EXPECT_EQ(pixel(result.raster, 0, 1), 0);
+    EXPECT_EQ(pixel(result.raster, 1, 1), 0);
+    EXPECT_EQ(pixel(result.raster, 2, 1), 0);
+    EXPECT_EQ(pixel(result.raster, 1, 2), 0);
+    EXPECT_EQ(pixel(result.raster, 0, 0), -1);
+    EXPECT_EQ(pixel(result.raster, 2, 2), -1);
+}
+
+TEST(LabelerTest, FourNeighborhoodRingDrainsQueuedPixelsAfterPathCloses)
+{
+    const auto result = runLabeler({
+        "111",
+        "101",
+        "111",
+    }, false);
+
+    ASSERT_EQ(result.info->length(), 1);
+    EXPECT_EQ(number(result.info->get(0), "pixelCount"), 8);
+    for (int32_t y = 0; y < 3; ++y) {
+        for (int32_t x = 0; x < 3; ++x) {
+            EXPECT_EQ(pixel(result.raster, x, y), x == 1 && y == 1 ? -1 : 0);
+        }
+    }
+}
+
+TEST(LabelerTest, EightNeighborhoodRingDrainsQueuedDiagonalPixels)
+{
+    const auto result = runLabeler({
+        "111",
+        "101",
+        "111",
+    }, true);
+
+    ASSERT_EQ(result.info->length(), 1);
+    EXPECT_EQ(number(result.info->get(0), "pixelCount"), 8);
+    for (int32_t y = 0; y < 3; ++y) {
+        for (int32_t x = 0; x < 3; ++x) {
+            EXPECT_EQ(pixel(result.raster, x, y), x == 1 && y == 1 ? -1 : 0);
+        }
+    }
+}
+
 TEST(LabelerTest, EmptyBitmapProducesOnlyBackgroundPixels)
 {
     const auto result = runLabeler({
