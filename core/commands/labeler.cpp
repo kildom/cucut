@@ -64,7 +64,7 @@ Buffer<LabelRaster> labeler(
 }
 
 static BinJSON::Any labeler(BinJSON::Any command) {
-    BinJSON::Array labelInfos;
+    BinJSON::Array labelInfos = BinJSON::makeArray();
 
     auto srcBuffer = command->get("bitmap")->buffer<PixelMapRaster>();
     auto is8Neighborhood = command->get("is8Neighborhood")->boolean();

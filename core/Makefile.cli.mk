@@ -21,10 +21,12 @@ CLI_BINARY := $(BUILD_DIR)/cucut-cli
 BUILD_CONFIG := $(OBJ_DIR)/.build-config
 
 C_SOURCES := $(wildcard $(MAKEFILE_DIR)*.c)
-CPP_SOURCES := $(wildcard $(MAKEFILE_DIR)*.cpp)
+CPP_SOURCES := $(filter-out $(MAKEFILE_DIR)wasm.cpp,$(wildcard $(MAKEFILE_DIR)*.cpp))
+COMMAND_CPP_SOURCES := $(wildcard $(MAKEFILE_DIR)commands/*.cpp)
 C_OBJECTS := $(patsubst $(MAKEFILE_DIR)%.c,$(OBJ_DIR)/%.o,$(C_SOURCES))
 CPP_OBJECTS := $(patsubst $(MAKEFILE_DIR)%.cpp,$(OBJ_DIR)/%.o,$(CPP_SOURCES))
-OBJECTS := $(C_OBJECTS) $(CPP_OBJECTS)
+COMMAND_CPP_OBJECTS := $(patsubst $(MAKEFILE_DIR)commands/%.cpp,$(OBJ_DIR)/commands/%.o,$(COMMAND_CPP_SOURCES))
+OBJECTS := $(C_OBJECTS) $(CPP_OBJECTS) $(COMMAND_CPP_OBJECTS)
 DEPENDENCIES := $(OBJECTS:.o=.d)
 
 .PHONY: all clean FORCE
@@ -40,6 +42,9 @@ $(OBJ_DIR)/%.o: $(MAKEFILE_DIR)%.c $(BUILD_CONFIG) | $(OBJ_DIR)
 $(OBJ_DIR)/%.o: $(MAKEFILE_DIR)%.cpp $(BUILD_CONFIG) | $(OBJ_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -MF $(@:.o=.d) -MT $@ -c $< -o $@
 
+$(OBJ_DIR)/commands/%.o: $(MAKEFILE_DIR)commands/%.cpp $(BUILD_CONFIG) | $(OBJ_DIR)/commands
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -MF $(@:.o=.d) -MT $@ -c $< -o $@
+
 BUILD_CONFIG_CONTENT := $(shell cat "$(BUILD_CONFIG)" 2>/dev/null)
 ifneq ($(BUILD_CONFIG_CONTENT),$(BUILD_MODE))
 $(BUILD_CONFIG): FORCE | $(OBJ_DIR)
@@ -49,11 +54,11 @@ endif
 
 FORCE:
 
-$(BUILD_DIR) $(OBJ_DIR):
+$(BUILD_DIR) $(OBJ_DIR) $(OBJ_DIR)/commands:
 	mkdir -p $@
 
 clean:
 	rm -f $(CLI_BINARY) $(OBJECTS) $(DEPENDENCIES)
-	rmdir $(OBJ_DIR) $(BUILD_DIR) 2>/dev/null || true
+	rmdir $(OBJ_DIR)/commands $(OBJ_DIR) $(BUILD_DIR) 2>/dev/null || true
 
 -include $(DEPENDENCIES)

@@ -455,11 +455,11 @@ BinJSON::Number binJSON(T value) {
     return BinJSON::makeNumber((double)value);
 }
 
-BinJSON::String binJSON(const char* text) {
+inline BinJSON::String binJSON(const char* text) {
     return BinJSON::makeString(text);
 }
 
-BinJSON::String binJSON(const std::string &text) {
+inline BinJSON::String binJSON(const std::string &text) {
     return BinJSON::makeString(text);
 }
 
@@ -491,7 +491,7 @@ BinJSON::Array binJSONArray(const T* array, int32_t size) {
     return binJSON(std::vector<BinJSON::Any>(array, array + size));
 }
 
-BinJSON::Object binJSONObject(std::initializer_list<std::pair<const std::string, BinJSON::Any>> values) {
+inline BinJSON::Object binJSONObject(std::initializer_list<std::pair<const std::string, BinJSON::Any>> values) {
     return binJSON(std::map<std::string, BinJSON::Any>(values));
 }
 
