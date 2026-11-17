@@ -83,6 +83,10 @@ Methoda dla prostych:
 6. Wyznaczamy część wspólną z aktualnym zakresem, jeżeli nic nie zostało, to ten jest ostani punkt prostej, idziemy i zaczynamy wyznaczanie od początku
 7. idziemy do p. 3
 
+Wskazówka 1: Przy wyznaczaniu limitów, przy pierszym punkcie oddalonym o więcej niż MAX, można wyznaczyć przekształcenie liniowe, pierszy punkt był w (0,0), a drugi w (x,0), gdzie x jest dodatnie. Od tego momentu cała geometria jest przekształcana przez to przekształcenie, więc analiza może być uprostrzona.
+
+Wskazówka 2: (wyklucza wskazówkę 1) Jeżeli przekształcimy każy punkt tak, że początkowy punkt był w (0,0), a aktualny w (x,0), to łatwiej będzie wyznaczyć wektory ograniczające prostą. Następnie wracamy do oryginalnego układu z tymi wektorami. Czyli teraz mamy razem 4 wektory razem z wektorami wyznaczającymi dopuszczalny zakres. Używając iloczynów wektorowych 2D można wyznaczyć które wektory powinny pozostać do wyznaczania nowego zakresu dopuszczalnego (chyba).
+
 Optymalizacja 1: jeżeli w punkcie 3 trafiliśmy na nie pasujący punkt, to można jeszcze przejechać po kilku punktach - może następne będą spełniać warunki
 
 Optymalizacja 2: Po wyznaczeniu całej ścieżki można przejść po węzłach i sprawdzić, czy przesunięcie węzła do tyłu lub do przodu (po oryginalnych punktach) nie zmniejszy błąd średniokwadratowy sąsiadujących odcinków. Jeżeli się da, to porawiamy i zaznaczamy sąsiadujące węzły jako czekające na poprawę. Kończymy jak już nie ma co poprawiać, albo już poprawiliśmy wystarczająco dużo.
