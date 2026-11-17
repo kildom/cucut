@@ -70,6 +70,57 @@ The separation extension is done in following way:
 If separation extension is done with bigger tool, check for leftovers inside extension area.
 If there are some, remove them using separation tool.
 
+
+### Converting list of coordinates to G-code
+
+Methoda dla prostych:
+
+1. Bierzemy pierwszy punkt
+2. Ustalamy limit nachylenia prostej na dowolny kąt (pozwalamy na dowolną prostą)
+3. Bierzemy następny punkt, łączymy prostą z pierwszym i sprawdzamy czy nachylenie prostej jest w wyznaczonych limitach, jeżeli nie, to poprzedni punkt był ostatnim punktem prostej i zaczynamy wyznaczanie od początku
+4. Jeżeli ten punkt nie dalej niż MAX od pierwszego, nic nie robimy, idziemy do p. 3
+5. Wyznaczamy limity nachylenia prostej, tak żeby ten punkt nie był dalej od prostej niż MAX
+6. Wyznaczamy część wspólną z aktualnym zakresem, jeżeli nic nie zostało, to ten jest ostani punkt prostej, idziemy i zaczynamy wyznaczanie od początku
+7. idziemy do p. 3
+
+Optymalizacja 1: jeżeli w punkcie 3 trafiliśmy na nie pasujący punkt, to można jeszcze przejechać po kilku punktach - może następne będą spełniać warunki
+
+Optymalizacja 2: Po wyznaczeniu całej ścieżki można przejść po węzłach i sprawdzić, czy przesunięcie węzła do tyłu lub do przodu (po oryginalnych punktach) nie zmniejszy błąd średniokwadratowy sąsiadujących odcinków. Jeżeli się da, to porawiamy i zaznaczamy sąsiadujące węzły jako czekające na poprawę. Kończymy jak już nie ma co poprawiać, albo już poprawiliśmy wystarczająco dużo.
+
+Przekształcenie prostych w łuki:
+
+1. Startujemy z jednym węzłem i bierzemy sąsiadujące węzły.
+2. Robimy przekształcenie liniowe wszystkich punków między tymi wezłami (włącznie), że węzły są na osi X symetrycznie względem osi Y.
+   ```
+           ^
+           |  (x,y)
+           |  o         - punkt przetwarzany
+   ---o----+----o---->  - węzły
+   (-d,0)  |  (d,0)
+           |
+           x (0,p)      - środek okręgu
+   ```
+3. Dla każdego punktu w pomiędzy węzłami wyznaczamy minimalną i maksymalną wartość p. Powinno sprowadzić się do  rozwiązania równań kwadratowych. Odatkowo p nie może być większy niż ileśtam (np. 0 lub -d/2), żeby nie tworzyć zbyt ostrych łuków.
+4. Wyznaczamy część wspólną tego zbioru dla kolejnych punktów. Jeżeli część wspólna jest pusta, to nie można tu zrobić łuku. Też trzeba dodać dodatkowe warunki, żeby nie tworzyć dziwnych łuków, np. węzły są zbyt blisko siebie lub maksymalne p to 4 pixele. 
+5. Wyznaczamy wartość p:
+   - proste podejście: srodej zbioru dopuszczalnego
+   - optymalne podejście: minimalizacja błędu średiokwadratowego
+6. Wyznacz błąd średniokwadratowy dla takiego łuku i zapamiętaj.
+7. Powtórz to samo dla łuku po przeciwnej stronie osi i pozostaw ten lepszy wynik.
+8. Przesuwamy się o jeden węzeł i powtarzamy.
+
+W ten sposób otrzymaliśmy listę wezłów, które możemy usunąć i puścić tam łuk między sąsiadującymi.
+Do tego lista jest posortowana po błędzie (od najmniejszego).
+
+Teraz redukujemy węzły przez tworzenie łuków:
+1. Jeżeli jest wszystkich węzłów (nie tylko na liście) mniej niż 4, to kończymy.
+2. Bierzemy pierwszego kantydata z listy i usuwamy z listy
+3. Przekształcamy w łuk (p jest już wcześniej wyznaczone)
+4. Usuwamy środkowy węzeł i dwa elementy z listy, które używały tego węzła.
+5. Wyznaczamy (jak powyżej) koszt utworzenia łuku między wezłami, których aktualnie brakuje w liście i dodajemy je do listy (posortowane)
+6. Powtarzamy od p. 1
+
+
 ## Core interface
 
 Core library interface is using structures similar to JSON, but binary instead to reduce parsing on C++ side.
