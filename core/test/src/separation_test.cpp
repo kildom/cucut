@@ -29,7 +29,10 @@ static BinJSON::Any runSeparation(
     const char* direction,
     const char* edge,
     int32_t startX,
-    int32_t startY)
+    int32_t startY,
+    int32_t offsetX = 0,
+    int32_t offsetY = 0,
+    bool includeOffset = false)
 {
     const auto command = binJSONObject({
         { "command", binJSON("separation") },
@@ -42,6 +45,12 @@ static BinJSON::Any runSeparation(
             { "y", binJSON(startY) },
         }) },
     });
+    if (includeOffset) {
+        command->get("offset") = binJSONObject({
+            { "x", binJSON(offsetX) },
+            { "y", binJSON(offsetY) },
+        });
+    }
     return executeCommand(command);
 }
 
@@ -90,6 +99,32 @@ TEST(SeparationTest, TracesClosedOuterPathInRequestedDirection)
     }
 }
 
+TEST(SeparationTest, PartialDistanceRasterUsesGlobalStartingPointAndOutputOffset)
+{
+    std::vector<Point> fullObjects;
+    std::vector<Point> partialObjects;
+    for (int32_t y = 14; y <= 16; ++y) {
+        for (int32_t x = 16; x <= 18; ++x) {
+            fullObjects.push_back({ x, y });
+            partialObjects.push_back({ x - 8, y - 7 });
+        }
+    }
+    const auto fullDistances = distanceField(40, 36, fullObjects);
+    const auto partialDistances = distanceField(24, 22, partialObjects);
+    const auto fullResponse = runSeparation(fullDistances, 4, "ccw", "outer", 16, 14);
+    const auto partialResponse = runSeparation(partialDistances, 4, "ccw", "outer", 16, 14, 8, 7, true);
+    ASSERT_FALSE(fullResponse->isError()) << fullResponse->error();
+    ASSERT_FALSE(partialResponse->isError()) << partialResponse->error();
+
+    const auto fullPath = pathPoints(fullResponse);
+    const auto partialPath = pathPoints(partialResponse);
+    ASSERT_EQ(partialPath.size(), fullPath.size());
+    for (int32_t index = 0; index < static_cast<int32_t>(fullPath.size()); ++index) {
+        EXPECT_FLOAT_EQ(partialPath[index].x, fullPath[index].x);
+        EXPECT_FLOAT_EQ(partialPath[index].y, fullPath[index].y);
+    }
+}
+
 TEST(SeparationTest, FindsInnerPathFromHoleStartingPoint)
 {
     std::vector<Point> ringPixels;
@@ -126,6 +161,10 @@ TEST(SeparationTest, RejectsInvalidRequestFields)
 
     const auto invalidDirection = runSeparation(distances, 2, "left", "outer", 4, 4);
     EXPECT_TRUE(invalidDirection->isError());
+
+    const auto invalidOffset = runSeparation(
+        distances, 2, "ccw", "outer", 4, 4, INT16_MAX + 1, 0, true);
+    EXPECT_TRUE(invalidOffset->isError());
 }
 
 }

@@ -47,6 +47,16 @@ static bool readPoint(const BinJSON::Any& value, Point& result)
         && readInt32(value->get("y"), result.y);
 }
 
+/** @brief Read an image offset within the signed 16-bit PixelLocation range. */
+static bool readOffset(const BinJSON::Any& value, Point& result)
+{
+    return readPoint(value, result)
+        && result.x >= std::numeric_limits<int16_t>::min()
+        && result.x <= std::numeric_limits<int16_t>::max()
+        && result.y >= std::numeric_limits<int16_t>::min()
+        && result.y <= std::numeric_limits<int16_t>::max();
+}
+
 /** @brief Read a distance pixel without assuming row alignment. */
 static float distanceAt(const Raster<float>* raster, int32_t x, int32_t y)
 {
@@ -251,10 +261,22 @@ static BinJSON::Any separation(BinJSON::Any command)
         || (edgeValue->string() != "inner" && edgeValue->string() != "outer")) {
         return BinJSON::makeError("Separation edge must be 'inner' or 'outer'");
     }
-    Point start{};
-    if (!readPoint(command->get("startingPoint"), start) || !inBounds(raster, start)) {
-        return BinJSON::makeError("Separation startingPoint is invalid or outside the raster");
+    Point offset{}; // A missing offset preserves full-raster request behavior.
+    const auto& offsetValue = command->get("offset");
+    if (offsetValue && !offsetValue->isNull() && !readOffset(offsetValue, offset)) {
+        return BinJSON::makeError("Separation offset is invalid");
     }
+    Point originalStart{};
+    if (!readPoint(command->get("startingPoint"), originalStart)) {
+        return BinJSON::makeError("Separation startingPoint is invalid");
+    }
+    const int64_t localStartX = static_cast<int64_t>(originalStart.x) - offset.x;
+    const int64_t localStartY = static_cast<int64_t>(originalStart.y) - offset.y;
+    if (localStartX < 0 || localStartX >= raster->width
+        || localStartY < 0 || localStartY >= raster->height) {
+        return BinJSON::makeError("Separation startingPoint is outside the distance raster");
+    }
+    const Point start{ static_cast<int32_t>(localStartX), static_cast<int32_t>(localStartY) };
 
     const int64_t pixelCount = static_cast<int64_t>(raster->width) * raster->height;
     if (pixelCount > INT32_MAX) {
@@ -335,8 +357,8 @@ static BinJSON::Any separation(BinJSON::Any command)
     Buffer<float> pathBuffer(static_cast<int32_t>(resultSize));
     float* output = pathBuffer.raw<float*>();
     for (int32_t index = 0; index < static_cast<int32_t>(path.size()); ++index) {
-        output[index * 2] = path[index].x;
-        output[index * 2 + 1] = path[index].y;
+        output[index * 2] = path[index].x + static_cast<float>(offset.x);
+        output[index * 2 + 1] = path[index].y + static_cast<float>(offset.y);
     }
     return binJSONObject({ { "path", binJSON(pathBuffer) } });
 }

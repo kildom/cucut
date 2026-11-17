@@ -340,6 +340,8 @@ A separation path is a CNC tool path in 2D plain that separates specific PCB tra
 The command takes euclidean distances from object as raster (e.g. output from `edt` command), distance from object where path should go (`R`) and direction: CW or CCW.
 As the result, the command returns a buffer of `float` pairs containing x and y coordinates of points at separation path. The path can be later used to create G-code, but not in this command.
 
+The path from separation command is always closed.
+
 The method is following:
 1. Find two pixels next to each other that one has `distance[A] <= R`. Let's call it A. Second called B has `distance[B] >= R`. During this algorithm, A and B will remain those conditions. The method of finding those pixels will be described later.
 2. Add the coordinates in the middle of A and B to the result path.
@@ -384,6 +386,8 @@ interface SeparationCommand {
   command: "separation";
   // Distance to process, object pixels are 0, distances are > 0. Can be output of "ecd" command.
   distance: Raster<float>;
+  // Offset where distance raster is located relative to original image. Output coordinates will be increased by this offset. The startingPoint is in original image coordinates, so before processing, the offset is substracted from it. It is (0, 0) by default.
+  offset?: PixelLocation;
   // Radius R of the separation tool (distance from object where path will go)
   radius: number;
   // Direction of path
@@ -400,6 +404,8 @@ interface LabelerResponse {
 }
 
 ```
+
+#### optimizePath
 
 ## CLI
 
