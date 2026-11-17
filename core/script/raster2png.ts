@@ -25,7 +25,7 @@ interface PngOutput {
 
 function usage(): never {
   throw new Error(
-    "Usage: npx tsx core/script/raster2png.ts [-o output.png] [-f filter] <file.raster> [...]",
+    "Usage: npx tsx core/script/raster2png.ts [-o output.png] [-f labels|distance] <file.raster> [...]",
   );
 }
 
@@ -198,8 +198,105 @@ function convertLabels(input: InputFile): PngOutput {
   return { path: input.outputPath, contents: pixmap.asPNG() };
 }
 
+function convertDistances(input: InputFile): PngOutput {
+  const data = readFileSync(input.path);
+  if (data.length < rasterDataOffset) {
+    throw new Error(`${input.path}: file is too small to contain a raster header`);
+  }
+
+  const width = data.readInt32LE(0);
+  const height = data.readInt32LE(4);
+  const stride = data.readInt32LE(8);
+  const pixelBytes = data.readInt32LE(12);
+  const rowBytes = width * pixelBytes;
+  const expectedSize = rasterDataOffset + stride * height;
+  if (
+    width <= 0 ||
+    height <= 0 ||
+    pixelBytes !== 4 ||
+    !Number.isSafeInteger(rowBytes) ||
+    stride < rowBytes ||
+    !Number.isSafeInteger(expectedSize) ||
+    expectedSize !== data.length
+  ) {
+    throw new Error(`${input.path}: invalid float raster dimensions or data size`);
+  }
+
+  const distanceScale = 50;
+
+  const pixmap = new mupdf.Pixmap(
+    mupdf.ColorSpace.DeviceRGB,
+    [0, 0, width, height],
+    false,
+  );
+  if (
+    pixmap.getAlpha() ||
+    pixmap.getColorSpace()?.getType() !== mupdf.ColorSpace.DeviceRGB.getType()
+  ) {
+    throw new Error(`${input.path}: MuPDF returned an unexpected pixmap format`);
+  }
+
+  const outputPixels = pixmap.getPixels();
+  const outputStride = pixmap.getStride();
+  if (outputStride < width * 3) {
+    throw new Error(`${input.path}: MuPDF returned an invalid RGB stride`);
+  }
+  for (let y = 0; y < height; y++) {
+    const sourceRowOffset = rasterDataOffset + y * stride;
+    const outputRowOffset = y * outputStride;
+    for (let x = 0; x < width; x++) {
+      const distance = data.readFloatLE(sourceRowOffset + x * pixelBytes);
+      const outputOffset = outputRowOffset + x * 3;
+      if (distance === 0) {
+        outputPixels[outputOffset] = 0;
+        outputPixels[outputOffset + 1] = 0;
+        outputPixels[outputOffset + 2] = 0;
+        continue;
+      }
+
+      const phase = Number.isFinite(distance)
+        ? ((distance % distanceScale) + distanceScale) % distanceScale / distanceScale
+        : 1;
+      const hue = (1 - phase) * 4;
+      const chroma = 1;
+      const secondary = chroma * (1 - Math.abs((hue % 2) - 1));
+      let red = 0;
+      let green = 0;
+      let blue = 0;
+      if (hue < 1) {
+        red = chroma;
+        green = secondary;
+      } else if (hue < 2) {
+        red = secondary;
+        green = chroma;
+      } else if (hue < 3) {
+        green = chroma;
+        blue = secondary;
+      } else {
+        green = secondary;
+        blue = chroma;
+      }
+      outputPixels[outputOffset] = Math.round(red * 255);
+      outputPixels[outputOffset + 1] = Math.round(green * 255);
+      outputPixels[outputOffset + 2] = Math.round(blue * 255);
+    }
+  }
+
+  return { path: input.outputPath, contents: pixmap.asPNG() };
+}
+
 async function main(): Promise<void> {
-  const outputs = parseArguments(process.argv.slice(2)).map(convertLabels);
+  const outputs = parseArguments(process.argv.slice(2)).map((input) => {
+    if (input.filter === "labels") {
+      return convertLabels(input);
+    }
+    if (input.filter === "distance") {
+      return convertDistances(input);
+    }
+    throw new Error(
+      `${input.path}: unsupported filter "${input.filter}" (available filters: labels, distance)`,
+    );
+  });
   for (const output of outputs) {
     await writeFile(output.path, output.contents);
     console.log(`Saved ${output.path}`);

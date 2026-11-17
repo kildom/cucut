@@ -2,6 +2,7 @@
 #include <gmock/gmock.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <new>

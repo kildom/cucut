@@ -298,6 +298,40 @@ interface LabelerResponse {
 
 ```
 
+#### edt
+
+Create image with euclidean distances to object.
+Using "Felzenszwalb and Huttenlocher's Euclidean Distance Transform Algorithm".
+
+This is generic command that can work with different kinds of raster. It takes pixelBytes of raster
+to see now long integer on pixel is. It can be 1, 2, 4, or 8. It takes condition telling which pixels are object
+and which are not. If condition is true, specified pixel is an object.
+
+It uses `float` type for computing.
+
+```ts
+
+interface EdtCommand {
+  command: "edt";
+  // Image to process (raster of integers of size 8, 16, 32, or 64 bits)
+  bitmap: Raster<T>;
+  // Comparition operator, `s` prefix means signed comparition, `u` means unsigned comparition.
+  objectCondition: "==" | "!=" | "s<" | "s>" | "u<" | "u>";
+  // Value to compare with
+  objectValue: number;
+  // If raster pixel is 8 bytes long, single number cannot hold 64-bit integer. Use this value for higher 32-bits for 64-bit integer. If not provided, assume zero.
+  objectValueHi32?: number;
+  // Bounding box of area to process. If provided, process only this area and return raster of the same size as this area.
+  bbox?: PixelRectangle;
+}
+
+interface LabelerResponse {
+  // Raster containing distances from detected objects. The same size as bbox (if provided) or input bitmap.
+  distance: Raster<float>;
+}
+
+```
+
 #### separation
 
 Create a seperation path for specific track.
