@@ -66,6 +66,7 @@ TEST(LabelerTest, FourNeighborhoodSeparatesDiagonalComponentsAndReportsMetadata)
     const auto& first = result.info->get(0);
     EXPECT_EQ(number(first, "index"), 0);
     EXPECT_EQ(number(first, "pixelCount"), 3);
+    EXPECT_EQ(first->get("holes")->length(), 0);
     expectPoint(first->get("topLeft"), 0, 0);
     expectPoint(first->get("bbox")->get("begin"), 0, 0);
     expectPoint(first->get("bbox")->get("end"), 2, 2);
@@ -134,9 +135,17 @@ TEST(LabelerTest, FourNeighborhoodRingDrainsQueuedPixelsAfterPathCloses)
 
     ASSERT_EQ(result.info->length(), 1);
     EXPECT_EQ(number(result.info->get(0), "pixelCount"), 8);
+    const auto holes = result.info->get(0)->get("holes");
+    ASSERT_EQ(holes->length(), 1);
+    const auto& hole = holes->get(0);
+    EXPECT_EQ(number(hole, "index"), -2);
+    EXPECT_EQ(number(hole, "pixelCount"), 1);
+    expectPoint(hole->get("location"), 1, 1);
+    expectPoint(hole->get("bbox")->get("begin"), 1, 1);
+    expectPoint(hole->get("bbox")->get("end"), 2, 2);
     for (int32_t y = 0; y < 3; ++y) {
         for (int32_t x = 0; x < 3; ++x) {
-            EXPECT_EQ(pixel(result.raster, x, y), x == 1 && y == 1 ? -1 : 0);
+            EXPECT_EQ(pixel(result.raster, x, y), x == 1 && y == 1 ? -2 : 0);
         }
     }
 }
@@ -151,11 +160,74 @@ TEST(LabelerTest, EightNeighborhoodRingDrainsQueuedDiagonalPixels)
 
     ASSERT_EQ(result.info->length(), 1);
     EXPECT_EQ(number(result.info->get(0), "pixelCount"), 8);
+    const auto holes = result.info->get(0)->get("holes");
+    ASSERT_EQ(holes->length(), 1);
+    const auto& hole = holes->get(0);
+    EXPECT_EQ(number(hole, "index"), -2);
+    EXPECT_EQ(number(hole, "pixelCount"), 1);
+    expectPoint(hole->get("location"), 1, 1);
+    expectPoint(hole->get("bbox")->get("begin"), 1, 1);
+    expectPoint(hole->get("bbox")->get("end"), 2, 2);
     for (int32_t y = 0; y < 3; ++y) {
         for (int32_t x = 0; x < 3; ++x) {
-            EXPECT_EQ(pixel(result.raster, x, y), x == 1 && y == 1 ? -1 : 0);
+            EXPECT_EQ(pixel(result.raster, x, y), x == 1 && y == 1 ? -2 : 0);
         }
     }
+}
+
+TEST(LabelerTest, DetectingHolePreservesPendingObjectPixels)
+{
+    const auto result = runLabeler({
+        "0000000",
+        "0111110",
+        "1100010",
+        "0100010",
+        "0111110",
+        "0001000",
+        "0001000",
+        "0001000",
+    }, false);
+
+    ASSERT_EQ(result.info->length(), 1);
+    EXPECT_EQ(number(result.info->get(0), "pixelCount"), 18);
+    for (int32_t y = 0; y < 8; ++y) {
+        for (int32_t x = 0; x < 7; ++x) {
+            const bool isObject = y >= 1 && y <= 4 && (x >= 1 && x <= 5)
+                && (y == 1 || y == 4 || x == 1 || x == 5);
+            const bool isStem = x == 3 && y >= 5;
+            const bool isTail = x == 0 && y == 2;
+            if (isObject || isStem || isTail) {
+                EXPECT_EQ(pixel(result.raster, x, y), 0) << "at (" << x << ", " << y << ")";
+            }
+        }
+    }
+    const auto holes = result.info->get(0)->get("holes");
+    ASSERT_EQ(holes->length(), 1);
+    EXPECT_EQ(number(holes->get(0), "pixelCount"), 6);
+}
+
+TEST(LabelerTest, HoleDoesNotAbsorbAnObjectInsideIt)
+{
+    const auto result = runLabeler({
+        "11111",
+        "10001",
+        "10101",
+        "10001",
+        "11111",
+    }, false);
+
+    ASSERT_EQ(result.info->length(), 2);
+    EXPECT_EQ(pixel(result.raster, 0, 0), 0);
+    EXPECT_EQ(pixel(result.raster, 2, 2), 1);
+    EXPECT_EQ(pixel(result.raster, 1, 1), -2);
+
+    const auto& outer = result.info->get(0);
+    const auto holes = outer->get("holes");
+    ASSERT_EQ(holes->length(), 1);
+    EXPECT_EQ(number(holes->get(0), "pixelCount"), 8);
+    expectPoint(holes->get(0)->get("bbox")->get("begin"), 1, 1);
+    expectPoint(holes->get(0)->get("bbox")->get("end"), 4, 4);
+    EXPECT_EQ(result.info->get(1)->get("holes")->length(), 0);
 }
 
 TEST(LabelerTest, EmptyBitmapProducesOnlyBackgroundPixels)

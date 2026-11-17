@@ -272,7 +272,7 @@ interface LabelerCommand {
 }
 
 interface LabelerResponse {
-  // Labeled raster, pixels -1 are background, labels starts at 0.
+  // Labeled raster, pixels -1 are background, labels start at 0, and holes use -2 and lower.
   labeled: LabelRaster;
   // Information about each label
   info: {
@@ -284,10 +284,24 @@ interface LabelerResponse {
     topLeft: PixelLocation;
     // Bounding box of the object
     bbox: PixelRectangle;
+    // Background regions enclosed by this object; contained objects are reported separately.
+    holes: {
+      // Negative pixel value used in the labeled raster, starting at -2
+      index: number;
+      pixelCount: number;
+      // First detected pixel in this hole
+      location: PixelLocation;
+      bbox: PixelRectangle;
+    }[];
   }[];
 }
 
 ```
+
+#### separation
+
+Create a seperation path for specific track.
+A separation path is a CNC tool path in 2D plain that separates specific PCB track from the rest of the Cu on the board. 
 
 ## CLI
 
