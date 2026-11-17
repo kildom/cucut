@@ -407,6 +407,25 @@ interface LabelerResponse {
 
 #### optimizePath
 
+Optimize a closed path by removing points that are within a maximum distance of a replacement line segment. The input path is a buffer of float x/y pairs, such as the output from `separation`, and `maxError` is the finite, non-negative maximum distance in pixels. The command uses the distance to the finite segment (not the infinite line) and retains points in original order. It treats the path as cyclic: the last retained point connects back to the first.
+
+```ts
+interface OptimizePathCommand {
+  command: "optimizePath";
+  path: Buffer<float>;
+  maxError: number;
+}
+
+interface OptimizePathResponse {
+  // Retained points as float x/y pairs.
+  path: Buffer<float>;
+  // Input point index corresponding to each retained point.
+  indices: Buffer<int32>;
+}
+```
+
+The `indices` buffer contains one signed 32-bit input index per output point. A path with one or two points is returned unchanged. Invalid, non-finite coordinates and malformed buffers are rejected.
+
 ## CLI
 
 The CLI is just a wrapper for core library interface.
