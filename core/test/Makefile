@@ -19,6 +19,7 @@ TEST_SOURCES := \
 	src/raster_test.cpp \
 	src/labeler_test.cpp \
 	src/edt_test.cpp \
+	src/separation_test.cpp \
 	gtest/googletest/src/gtest-all.cc \
 	gtest/googlemock/src/gmock-all.cc \
 	gtest/googlemock/src/gmock_main.cc
@@ -30,7 +31,7 @@ all: $(TEST_BINARY)
 run: $(TEST_BINARY)
 	./$(TEST_BINARY)
 
-$(TEST_BINARY): $(TEST_SOURCES) src/includes.hpp src/fatal_error_to_exception.hpp ../binjson.cpp ../binjson.hpp ../buffer.hpp ../raster.hpp ../rawbuffer.hpp ../errors.hpp ../ref.hpp ../commands/labeler.cpp ../commands/edt.cpp ../commands.cpp ../flood.cpp ../flood.hpp | build
+$(TEST_BINARY): $(TEST_SOURCES) src/includes.hpp src/fatal_error_to_exception.hpp ../binjson.cpp ../binjson.hpp ../buffer.hpp ../raster.hpp ../rawbuffer.hpp ../errors.hpp ../ref.hpp ../commands/labeler.cpp ../commands/edt.cpp ../commands/separation.cpp ../commands.cpp ../flood.cpp ../flood.hpp | build
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 build:

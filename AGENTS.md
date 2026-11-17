@@ -334,8 +334,72 @@ interface LabelerResponse {
 
 #### separation
 
-Create a seperation path for specific track.
-A separation path is a CNC tool path in 2D plain that separates specific PCB track from the rest of the Cu on the board. 
+Create a separation path for specific track.
+A separation path is a CNC tool path in 2D plain that separates specific PCB track or plane from the rest of the Cu on the board. The plains can also have inner holes, so this command also allow to separate hole in a separate call.
+
+The command takes euclidean distances from object as raster (e.g. output from `edt` command), distance from object where path should go (`R`) and direction: CW or CCW.
+As the result, the command returns a buffer of `float` pairs containing x and y coordinates of points at separation path. The path can be later used to create G-code, but not in this command.
+
+The method is following:
+1. Find two pixels next to each other that one has `distance[A] <= R`. Let's call it A. Second called B has `distance[B] >= R`. During this algorithm, A and B will remain those conditions. The method of finding those pixels will be described later.
+2. Add the coordinates in the middle of A and B to the result path.
+3. Mark pixels (on helper raster) at A and B as visited.
+4. Calculate vector V from A to B: `V = B - A`. It should be 1 pixel long.
+5. Calculate vector D depending on direction:
+   - CW: `D = [V.y, -V.x]`
+   - CCW: `D = [-V.y, V.x]`
+6. Move points A and/or B depending on case:
+   - `distance[A + D] >= R`, then `B = A + D`, A unchanged
+   - `distance[B + D] >= R`, then `A = A + D` and `B = B + D`
+   - otherwise `A = B + D`, B unchanged
+7. If both A and B are at pixels that were marked as visited, finish the algorithm
+8. Go back to point 2.
+
+Notice that coordinates of A, B, V, and D are always integers, coordinates in path are `float`.
+
+The method of finding first two points depends on which edge of object we are processing: outer or inner.
+
+Outer edge:
+1. The starting point provided by the caller must be inside object (distance == 0).
+2. Go up pixel by pixel.
+3. If you hit pixel where `distance[B] >= R`, keep this pixel as B and pixel from previous step as A.
+
+Inner edge:
+1. The starting point provided by the caller must be inside hole: distance > 0, but less than R.
+2. Look at 4 neighborhood of the point and go to point with greatest distance. If none of the points in neighborhood has distance greaten than current pixel, do slower fallback algorithm.
+3. If you hit pixel where `distance[B] >= R`, keep this pixel as B and pixel from previous step as A.
+
+Inner edge (slower fallback algorithm)
+1. You can use point from previus fast algorithm as starting point.
+2. Travel over pixels with distance > 0 like in flood fill with 4 neighborhood. Use helper raster to keep track of visited pixels.
+3. If you hit pixel where `distance[T] >= R`, keep this point as T.
+4. Go around 8 neighborhood of point T and find point A where `distance[A] < R`.
+5. Go around 4 neighborhood of point A and find point B where `distance[A] >= R`.
+
+Warning: if during traveling, we hit edge of provided raster of distances, we should stop processing and return error: BinJSON::Object with single member called "error" with error message. The caller is responsible for passing raster with objects far enough from edges.
+
+```ts
+
+interface SeparationCommand {
+  command: "separation";
+  // Distance to process, object pixels are 0, distances are > 0. Can be output of "ecd" command.
+  distance: Raster<float>;
+  // Radius R of the separation tool (distance from object where path will go)
+  radius: number;
+  // Direction of path
+  direction: "cw" | "ccw";
+  // Value to compare with
+  edge: "inner" | "outer";
+  // Starting point of processing. For "inner" this is some pixel outside object (distance > 0), for "outer" this is some pixel inside object (distance == 0). Those pixels can be obtain from "labeler" command.
+  startingPoint: PixelLocation;
+}
+
+interface LabelerResponse {
+  // Array of float pairs (x and y) of point at the path. The points takes entire buffer, so the count can be calculated from buffer size.
+  path: Buffer<float>;
+}
+
+```
 
 ## CLI
 
