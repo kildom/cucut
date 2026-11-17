@@ -15,5 +15,6 @@
 #include <type_traits>
 #include <limits>
 #include <memory>
+#include <queue>
 #include <vector>
 #include <map>

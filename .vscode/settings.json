@@ -2,5 +2,6 @@
     "C_Cpp.files.exclude": {
         "**/core/test/gtest/**": true,
         "**/core/tools/**": true
-    }
+    },
+    "cSpell.maxNumberOfProblems": 5000
 }

@@ -2,4 +2,6 @@
 /core/tools/
 /core/build/
 /node_modules/
-_tmp/
+/_tmp/*
+!/_tmp/test-cli.py
+!/_tmp/two-sources-B_Cu.pdf

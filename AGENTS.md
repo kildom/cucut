@@ -426,6 +426,36 @@ interface OptimizePathResponse {
 
 The `indices` buffer contains one signed 32-bit input index per output point. A path with one or two points is returned unchanged. Invalid, non-finite coordinates and malformed buffers are rejected.
 
+#### compositePath
+
+Replace selected line segments with circular arcs while preserving a closed path and bounding the deviation from the original path. This command is intended to run after `optimizePath`.
+
+```ts
+interface CompositePathCommand {
+  command: "compositePath";
+  // Original float x/y coordinate pairs supplied to optimizePath.
+  path: Buffer<float>;
+  // Original path indices returned by optimizePath, in strictly increasing order.
+  indices: Buffer<int32>;
+  // Finite, non-negative maximum distance in pixels from any original point to its replacement line or arc.
+  maxError: number;
+  // Finite, non-negative lower bound on created arc radii, in pixels.
+  minRadius: number;
+  // Finite upper bound on created arc radii, in pixels; must be at least minRadius.
+  maxRadius: number;
+}
+
+interface CompositePathResponse {
+  // Interleaved float x/y pairs: junction, outgoing arc center, next junction, and so on.
+  // A center of (NaN, NaN) denotes a straight line. The final pair repeats the first junction.
+  path: Buffer<float>;
+}
+```
+
+The indices select the retained junctions from the original path; original points between retained indices are used to test each replacement. If a straight segment exceeds `maxError`, the command restores original points as junctions until its line deviation is within tolerance. The path is treated as cyclic, including the segment from its last point back to its first. The command greedily replaces the lowest-error eligible pair of consecutive segments with one minor arc, updating adjacent candidates, until no candidate remains or only three junctions are left. A replacement is allowed only when every original point on the replaced portion is at most `maxError` from the finite arc and its radius is within `[minRadius, maxRadius]`. The radius must also be at least the straight-line distance between its endpoint junctions.
+
+Each center is equidistant from its two neighboring junctions (subject to float rounding). The chosen arc is always the minor arc, regardless of whether traversal is clockwise or counterclockwise. Invalid buffers, non-finite coordinates or limits, out-of-range indices, and indices that are not strictly increasing are rejected.
+
 ## CLI
 
 The CLI is just a wrapper for core library interface.
