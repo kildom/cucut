@@ -18,6 +18,7 @@ TEST_SOURCES := \
 	src/rawbuffer_test.cpp \
 	src/raster_test.cpp \
 	src/labeler_test.cpp \
+	src/collapse_objects_test.cpp \
 	src/edt_test.cpp \
 	src/separation_test.cpp \
 	src/optimize_path_test.cpp \
@@ -33,7 +34,7 @@ all: $(TEST_BINARY)
 run: $(TEST_BINARY)
 	./$(TEST_BINARY)
 
-$(TEST_BINARY): $(TEST_SOURCES) src/includes.hpp src/fatal_error_to_exception.hpp ../binjson.cpp ../binjson.hpp ../buffer.hpp ../raster.hpp ../rawbuffer.hpp ../errors.hpp ../ref.hpp ../commands/labeler.cpp ../commands/edt.cpp ../commands/separation.cpp ../commands/optimizePath.cpp ../commands/compositePath.cpp ../commands.cpp ../flood.cpp ../flood.hpp | build
+$(TEST_BINARY): $(TEST_SOURCES) src/includes.hpp src/fatal_error_to_exception.hpp ../binjson.cpp ../binjson.hpp ../buffer.hpp ../raster.hpp ../rawbuffer.hpp ../errors.hpp ../ref.hpp ../commands/labeler.cpp ../commands/collapseObjects.cpp ../commands/edt.cpp ../commands/separation.cpp ../commands/optimizePath.cpp ../commands/compositePath.cpp ../commands.cpp ../flood.cpp ../flood.hpp | build
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 build:

@@ -135,6 +135,33 @@ def validate_labeler(response_path: Path, raster_path: Path) -> None:
     print(f"Validated labeler response: {width}x{height}, {len(info)} labels, {len(hole_info)} holes")
 
 
+def make_collapse_request(input_path: Path, raster_path: Path, labeler_response_path: Path) -> None:
+    write_json(
+        input_path,
+        {
+            "command": "collapseObjects",
+            "labeled": file_reference(raster_path),
+            "info": read_json(labeler_response_path)["info"],
+        },
+    )
+
+
+def validate_collapse(response_path: Path, raster_path: Path) -> None:
+    response = read_json(response_path)
+    assert response.get("collapsed", "").endswith(f"{response_path.stem}-1.raw"), response
+    raster = raster_path.read_bytes()
+    width, height, stride, pixel_bytes = raster_header(raster)
+    assert width > 0 and height > 0 and pixel_bytes == 2 and stride >= width * pixel_bytes
+    assert len(raster) == HEADER_SIZE + stride * height, "Collapsed raster size does not match its header"
+    labels = [
+        struct.unpack_from("<h", raster, pixel_offset(x, y, stride, pixel_bytes))[0]
+        for y in range(height)
+        for x in range(width)
+    ]
+    assert all(label < 0 for label in labels), "Collapsed raster still contains object labels"
+    print(f"Validated collapsed edge raster: {width}x{height}")
+
+
 def make_labeler_request(input_path: Path, raster_path: Path) -> None:
     write_json(
         input_path,
@@ -392,6 +419,13 @@ def main() -> None:
     run_tsx("src/cucutcli.ts", cutting_labeler_output, cutting_labeler_input)
     validate_labeler(cutting_labeler_output, cutting_labeled_raster)
 
+    cutting_collapse_input = SCRIPT_DIR / "cut-edges-collapse-request.json"
+    cutting_collapse_output = SCRIPT_DIR / "cut-edges-collapse-response.json"
+    cutting_collapsed_raster = SCRIPT_DIR / "cut-edges-collapse-response-1.raw"
+    make_collapse_request(cutting_collapse_input, cutting_labeled_raster, cutting_labeler_output)
+    run_tsx("src/cucutcli.ts", cutting_collapse_output, cutting_collapse_input)
+    validate_collapse(cutting_collapse_output, cutting_collapsed_raster)
+
     edt_input = SCRIPT_DIR / "cu-track-distance-request.json"
     edt_output = SCRIPT_DIR / "cu-track-distance-response.json"
     edt_raster = SCRIPT_DIR / "cu-track-distance-response-1.raw"
@@ -471,6 +505,8 @@ def main() -> None:
     cutting_labeled_image = SCRIPT_DIR / "cut-labeled-edges.png"
     run_tsx("core/script/raster2png.ts", "-o", tracks_labeled_image, tracks_labeled_raster)
     run_tsx("core/script/raster2png.ts", "-o", cutting_labeled_image, cutting_labeled_raster)
+    collapsed_cutting_image = SCRIPT_DIR / "cut-collapsed-edges.png"
+    run_tsx("core/script/raster2png.ts", "-o", collapsed_cutting_image, cutting_collapsed_raster)
     run_tsx(
         "core/script/raster2png.ts",
         "-f",
@@ -505,6 +541,7 @@ def main() -> None:
         cutting_image.name,
         tracks_labeled_image.name,
         cutting_labeled_image.name,
+        collapsed_cutting_image.name,
         "cu-track-distance.png",
         "cu-track-separation.png",
         "cu-track-separation-optimized.png",

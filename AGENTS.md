@@ -456,6 +456,53 @@ The indices select the retained junctions from the original path; original point
 
 Each center is equidistant from its two neighboring junctions (subject to float rounding). The chosen arc is always the minor arc, regardless of whether traversal is clockwise or counterclockwise. Invalid buffers, non-finite coordinates or limits, out-of-range indices, and indices that are not strictly increasing are rejected.
 
+#### collapseObjects
+
+This command will collapse objects by filling its pixels neighbor area (hole or background).
+
+The PCB edge cuts lines shows where machine should cut PCB, but they are few pixels wide.
+The actual edge has thickness of zero - it is just a boundary between PCB and non-PCB area.
+With this command, cut lines becomes removed, but areas that they divided remains divided.
+The important thing is that final division boundary should be somewhere at the middle of cut line.
+
+Input of command is the same as output of the `labeler` command.
+
+Collapse object by object using information provided by `labeler`. The procedure of collapsing single object is following:
+1. Start at starting point of object and go over all pixels of object (not hole). Use food-fill-like movement to travel all the pixels (use 4-neighborhood for that flood-fill).
+2. Calculate minimum label value of 8-neighborhood of currently possessing pixel. If it is negative (background or hole), then:
+   - set current pixel label to that value,
+   - push to helper stack the pixels from 8-neighborhood that belongs to object (has object label) and they where not pushed yet. You can use helper raster to mark which pixels are on stack. You can use the same raster as for marking visited pixels while doing food-fill-like movement, but on different bit.
+3. Once this process is completed, create new helper stack and use current stack for popping.
+4. For each popped pixel location do following:
+   - Set this pixel label to minimum of the 8-neighborhood pixel labels
+   - push to new helper stack the pixels from 8-neighborhood that belongs to object (has object label) and they where not pushed yet.
+5. If stack is not empty, go to step 3
+6. If stack is empty, then object was collapsed and we can stop process.
+
+To save memory, the labels raster will be processed in-place.
+
+
+```ts
+
+interface CollapseObjectsCommand {
+  command: "collapseObjects";
+  // Labeled raster, it will be edited in-place, so this command may change it.
+  labeled: LabelRaster;
+  // Information about each label
+  info: {
+    // ... the same as output of labeler
+  }[];
+}
+
+
+interface CollapseObjectsResponse {
+  // Labeled raster with only holes and background, objects are collapsed
+  collapsed: LabelRaster;
+}
+
+```
+
+
 ## CLI
 
 The CLI is just a wrapper for core library interface.
