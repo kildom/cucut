@@ -5,19 +5,16 @@ import json
 import math
 import os
 from pathlib import Path
-import shutil
 import struct
 import subprocess
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = SCRIPT_DIR.parent
-PDF_SOURCE = Path(
-    "/home/dok/my/boiler-controller/high-voltage-input/Production/two-sources-B_Cu.pdf"
-)
-PDF_COPY = SCRIPT_DIR / "two-sources-B_Cu.pdf"
-INPUT_RASTER = SCRIPT_DIR / "two-sources-B_Cu.raster"
-OUTPUT_RASTER = SCRIPT_DIR / "output-1.raw"
+TRACKS_PDF = SCRIPT_DIR / "two-sources-B_Cu.pdf"
+CUTTING_PDF = SCRIPT_DIR / "two-sources-Edge_Cuts.pdf"
+TRACKS_RASTER = SCRIPT_DIR / "cu-source.raster"
+CUTTING_RASTER = SCRIPT_DIR / "cut-source.raster"
 HEADER_SIZE = 64
 
 
@@ -62,7 +59,7 @@ def validate_labeler(response_path: Path, raster_path: Path) -> None:
     response = read_json(response_path)
     info = response.get("info")
     assert isinstance(info, list), response
-    assert response.get("labeled", "").endswith("output-1.raw"), response
+    assert response.get("labeled", "").endswith(f"{response_path.stem}-1.raw"), response
 
     raster = raster_path.read_bytes()
     width, height, stride, pixel_bytes = raster_header(raster)
@@ -138,6 +135,16 @@ def validate_labeler(response_path: Path, raster_path: Path) -> None:
     print(f"Validated labeler response: {width}x{height}, {len(info)} labels, {len(hole_info)} holes")
 
 
+def make_labeler_request(input_path: Path, raster_path: Path) -> None:
+    write_json(
+        input_path,
+        {
+            "command": "labeler",
+            "bitmap": file_reference(raster_path),
+        },
+    )
+
+
 def make_edt_request(input_path: Path, raster_path: Path, track_index: int) -> None:
     write_json(
         input_path,
@@ -166,7 +173,7 @@ def make_hole_edt_request(input_path: Path, raster_path: Path, response_path: Pa
 
 def validate_edt(response_path: Path, raster_path: Path) -> None:
     response = read_json(response_path)
-    assert response.get("distance", "").endswith("edt-output-1.raw"), response
+    assert response.get("distance", "").endswith(f"{response_path.stem}-1.raw"), response
     raster = raster_path.read_bytes()
     width, height, stride, pixel_bytes = raster_header(raster)
     assert width > 0 and height > 0 and pixel_bytes == 4 and stride >= width * pixel_bytes
@@ -285,8 +292,7 @@ def validate_optimized_path(
 
 def validate_separation(response_path: Path, path_path: Path, *, inner: bool = False) -> None:
     response = read_json(response_path)
-    suffix = "hole-separation-output-1.raw" if inner else "separation-output-1.raw"
-    assert response.get("path", "").endswith(suffix), response
+    assert response.get("path", "").endswith(f"{response_path.stem}-1.raw"), response
     path = path_path.read_bytes()
     message = "Inner separation path" if inner else "Separation path"
     assert len(path) >= 2 * 2 * 4 and len(path) % (2 * 4) == 0, f"{message} is missing or malformed"
@@ -353,70 +359,91 @@ def make_hole_separation_request(
 
 
 def main() -> None:
-    if not PDF_SOURCE.is_file():
-        raise SystemExit(f"Input PDF not found: {PDF_SOURCE}")
+    for pdf_path in (TRACKS_PDF, CUTTING_PDF):
+        if not pdf_path.is_file():
+            raise SystemExit(f"Input PDF not found: {pdf_path}")
 
-    shutil.copyfile(PDF_SOURCE, PDF_COPY)
     run("make", "-f", str(ROOT_DIR / "core/Makefile.cli.mk"), "-C", str(ROOT_DIR))
-    run_tsx("core/script/pdf2raster.ts", "50", PDF_COPY)
-    run_tsx("core/script/raster2png.ts", "-o", SCRIPT_DIR / "input.png", INPUT_RASTER)
+    run_tsx("core/script/pdf2raster.ts", "50", TRACKS_PDF, CUTTING_PDF)
+    TRACKS_PDF.with_suffix(".raster").replace(TRACKS_RASTER)
+    CUTTING_PDF.with_suffix(".raster").replace(CUTTING_RASTER)
+    tracks_dimensions = raster_header(TRACKS_RASTER.read_bytes())[:2]
+    cutting_dimensions = raster_header(CUTTING_RASTER.read_bytes())[:2]
+    assert tracks_dimensions == cutting_dimensions, (
+        f"Converted PDF dimensions differ: {tracks_dimensions} != {cutting_dimensions}"
+    )
 
-    labeler_output = SCRIPT_DIR / "output.json"
-    run_tsx("src/cucutcli.ts", labeler_output, SCRIPT_DIR / "input.json")
-    validate_labeler(labeler_output, OUTPUT_RASTER)
+    tracks_image = SCRIPT_DIR / "cu-source.png"
+    cutting_image = SCRIPT_DIR / "cut-source.png"
+    run_tsx("core/script/raster2png.ts", "-o", tracks_image, TRACKS_RASTER)
+    run_tsx("core/script/raster2png.ts", "-o", cutting_image, CUTTING_RASTER)
 
-    edt_input = SCRIPT_DIR / "edt-input.json"
-    edt_output = SCRIPT_DIR / "edt-output.json"
-    edt_raster = SCRIPT_DIR / "edt-output-1.raw"
-    make_track_edt_request(edt_input, OUTPUT_RASTER, labeler_output)
+    tracks_labeler_input = SCRIPT_DIR / "cu-tracks-labeler-request.json"
+    tracks_labeler_output = SCRIPT_DIR / "cu-tracks-labeler-response.json"
+    tracks_labeled_raster = SCRIPT_DIR / "cu-tracks-labeler-response-1.raw"
+    make_labeler_request(tracks_labeler_input, TRACKS_RASTER)
+    run_tsx("src/cucutcli.ts", tracks_labeler_output, tracks_labeler_input)
+    validate_labeler(tracks_labeler_output, tracks_labeled_raster)
+
+    cutting_labeler_input = SCRIPT_DIR / "cut-edges-labeler-request.json"
+    cutting_labeler_output = SCRIPT_DIR / "cut-edges-labeler-response.json"
+    cutting_labeled_raster = SCRIPT_DIR / "cut-edges-labeler-response-1.raw"
+    make_labeler_request(cutting_labeler_input, CUTTING_RASTER)
+    run_tsx("src/cucutcli.ts", cutting_labeler_output, cutting_labeler_input)
+    validate_labeler(cutting_labeler_output, cutting_labeled_raster)
+
+    edt_input = SCRIPT_DIR / "cu-track-distance-request.json"
+    edt_output = SCRIPT_DIR / "cu-track-distance-response.json"
+    edt_raster = SCRIPT_DIR / "cu-track-distance-response-1.raw"
+    make_track_edt_request(edt_input, tracks_labeled_raster, tracks_labeler_output)
     run_tsx("src/cucutcli.ts", edt_output, edt_input)
     validate_edt(edt_output, edt_raster)
 
-    hole_edt_input = SCRIPT_DIR / "hole-edt-input.json"
-    hole_edt_output = SCRIPT_DIR / "hole-edt-output.json"
-    hole_edt_raster = SCRIPT_DIR / "hole-edt-output-1.raw"
-    make_hole_edt_request(hole_edt_input, OUTPUT_RASTER, labeler_output)
+    hole_edt_input = SCRIPT_DIR / "cu-hole-distance-request.json"
+    hole_edt_output = SCRIPT_DIR / "cu-hole-distance-response.json"
+    hole_edt_raster = SCRIPT_DIR / "cu-hole-distance-response-1.raw"
+    make_hole_edt_request(hole_edt_input, tracks_labeled_raster, tracks_labeler_output)
     run_tsx("src/cucutcli.ts", hole_edt_output, hole_edt_input)
 
-    separation_input = SCRIPT_DIR / "separation-input.json"
-    separation_output = SCRIPT_DIR / "separation-output.json"
-    separation_path = SCRIPT_DIR / "separation-output-1.raw"
-    make_separation_request(separation_input, edt_raster, labeler_output)
+    separation_input = SCRIPT_DIR / "cu-track-separation-request.json"
+    separation_output = SCRIPT_DIR / "cu-track-separation-response.json"
+    separation_path = SCRIPT_DIR / "cu-track-separation-response-1.raw"
+    make_separation_request(separation_input, edt_raster, tracks_labeler_output)
     run_tsx("src/cucutcli.ts", separation_output, separation_input)
     validate_separation(separation_output, separation_path)
 
-    optimize_path_input = SCRIPT_DIR / "optimize-path-input.json"
-    optimize_path_output = SCRIPT_DIR / "optimize-path-output.json"
-    optimized_path = SCRIPT_DIR / "optimize-path-output-2.raw"
-    optimized_indices = SCRIPT_DIR / "optimize-path-output-1.raw"
+    optimize_path_input = SCRIPT_DIR / "cu-track-path-optimization-request.json"
+    optimize_path_output = SCRIPT_DIR / "cu-track-path-optimization-response.json"
+    optimized_path = SCRIPT_DIR / "cu-track-path-optimization-response-2.raw"
+    optimized_indices = SCRIPT_DIR / "cu-track-path-optimization-response-1.raw"
     make_optimize_path_request(optimize_path_input, separation_path, 1.0)
     run_tsx("src/cucutcli.ts", optimize_path_output, optimize_path_input)
     validate_optimized_path(
         optimize_path_output, optimized_path, optimized_indices, separation_path
     )
 
-    composite_path_input = SCRIPT_DIR / "composite-path-input.json"
-    composite_path_output = SCRIPT_DIR / "composite-path-output.json"
-    composite_path = SCRIPT_DIR / "composite-path-output-1.raw"
+    composite_path_input = SCRIPT_DIR / "cu-track-arc-composition-request.json"
+    composite_path_output = SCRIPT_DIR / "cu-track-arc-composition-response.json"
+    composite_path = SCRIPT_DIR / "cu-track-arc-composition-response-1.raw"
     make_composite_path_request(
         composite_path_input, separation_path, optimized_indices, 1.0, 3.0, 100.0
     )
     run_tsx("src/cucutcli.ts", composite_path_output, composite_path_input)
     validate_composite_path(composite_path_output, composite_path)
 
-    hole_separation_input = SCRIPT_DIR / "hole-separation-input.json"
-    hole_separation_output = SCRIPT_DIR / "hole-separation-output.json"
-    hole_separation_path = SCRIPT_DIR / "hole-separation-output-1.raw"
+    hole_separation_input = SCRIPT_DIR / "cu-hole-separation-request.json"
+    hole_separation_output = SCRIPT_DIR / "cu-hole-separation-response.json"
+    hole_separation_path = SCRIPT_DIR / "cu-hole-separation-response-1.raw"
     make_hole_separation_request(
-        hole_separation_input, hole_edt_raster, OUTPUT_RASTER, labeler_output
+        hole_separation_input, hole_edt_raster, tracks_labeled_raster, tracks_labeler_output
     )
     run_tsx("src/cucutcli.ts", hole_separation_output, hole_separation_input)
     validate_separation(hole_separation_output, hole_separation_path, inner=True)
 
-    hole_optimize_path_input = SCRIPT_DIR / "hole-optimize-path-input.json"
-    hole_optimize_path_output = SCRIPT_DIR / "hole-optimize-path-output.json"
-    optimized_hole_path = SCRIPT_DIR / "hole-optimize-path-output-2.raw"
-    optimized_hole_indices = SCRIPT_DIR / "hole-optimize-path-output-1.raw"
+    hole_optimize_path_input = SCRIPT_DIR / "cu-hole-path-optimization-request.json"
+    hole_optimize_path_output = SCRIPT_DIR / "cu-hole-path-optimization-response.json"
+    optimized_hole_path = SCRIPT_DIR / "cu-hole-path-optimization-response-2.raw"
+    optimized_hole_indices = SCRIPT_DIR / "cu-hole-path-optimization-response-1.raw"
     make_optimize_path_request(hole_optimize_path_input, hole_separation_path, 1.0)
     run_tsx("src/cucutcli.ts", hole_optimize_path_output, hole_optimize_path_input)
     validate_optimized_path(
@@ -426,9 +453,9 @@ def main() -> None:
         hole_separation_path,
     )
 
-    composite_hole_path_input = SCRIPT_DIR / "composite-hole-path-input.json"
-    composite_hole_path_output = SCRIPT_DIR / "composite-hole-path-output.json"
-    composite_hole_path = SCRIPT_DIR / "composite-hole-path-output-1.raw"
+    composite_hole_path_input = SCRIPT_DIR / "cu-hole-arc-composition-request.json"
+    composite_hole_path_output = SCRIPT_DIR / "cu-hole-arc-composition-response.json"
+    composite_hole_path = SCRIPT_DIR / "cu-hole-arc-composition-response-1.raw"
     make_composite_path_request(
         composite_hole_path_input,
         hole_separation_path,
@@ -440,22 +467,25 @@ def main() -> None:
     run_tsx("src/cucutcli.ts", composite_hole_path_output, composite_hole_path_input)
     validate_composite_path(composite_hole_path_output, composite_hole_path)
 
-    run_tsx("core/script/raster2png.ts", "-o", SCRIPT_DIR / "output.png", OUTPUT_RASTER)
+    tracks_labeled_image = SCRIPT_DIR / "cu-labeled-tracks.png"
+    cutting_labeled_image = SCRIPT_DIR / "cut-labeled-edges.png"
+    run_tsx("core/script/raster2png.ts", "-o", tracks_labeled_image, tracks_labeled_raster)
+    run_tsx("core/script/raster2png.ts", "-o", cutting_labeled_image, cutting_labeled_raster)
     run_tsx(
         "core/script/raster2png.ts",
         "-f",
         "distance",
         "-o",
-        SCRIPT_DIR / "edt.png",
+        SCRIPT_DIR / "cu-track-distance.png",
         edt_raster,
     )
     for output_name, filter_name, path in (
-        ("separation.png", "path", separation_path),
-        ("separation-optimized.png", "path", optimized_path),
-        ("separation-composite.png", "composite-path", composite_path),
-        ("separation-hole.png", "path", hole_separation_path),
-        ("separation-hole-optimized.png", "path", optimized_hole_path),
-        ("separation-hole-composite.png", "composite-path", composite_hole_path),
+        ("cu-track-separation.png", "path", separation_path),
+        ("cu-track-separation-optimized.png", "path", optimized_path),
+        ("cu-track-separation-composite.png", "composite-path", composite_path),
+        ("cu-hole-separation.png", "path", hole_separation_path),
+        ("cu-hole-separation-optimized.png", "path", optimized_hole_path),
+        ("cu-hole-separation-composite.png", "composite-path", composite_hole_path),
     ):
         arguments: list[Path | str] = [
             "-o",
@@ -465,19 +495,23 @@ def main() -> None:
         ]
         if filter_name == "path":
             arguments.extend(["--filter-color", "ff0000"])
-        arguments.extend(["--filter-line", "ffff00", "--filter-background", SCRIPT_DIR / "input.png", path])
+        arguments.extend(
+            ["--filter-line", "ffff00", "--filter-background", tracks_image, path]
+        )
         run_tsx("core/script/buffer2png.ts", *arguments)
 
     images = (
-        "input.png",
-        "output.png",
-        "edt.png",
-        "separation.png",
-        "separation-optimized.png",
-        "separation-composite.png",
-        "separation-hole.png",
-        "separation-hole-optimized.png",
-        "separation-hole-composite.png",
+        tracks_image.name,
+        cutting_image.name,
+        tracks_labeled_image.name,
+        cutting_labeled_image.name,
+        "cu-track-distance.png",
+        "cu-track-separation.png",
+        "cu-track-separation-optimized.png",
+        "cu-track-separation-composite.png",
+        "cu-hole-separation.png",
+        "cu-hole-separation-optimized.png",
+        "cu-hole-separation-composite.png",
     )
     print("Test complete. Images: " + ", ".join(str(SCRIPT_DIR / name) for name in images))
 
