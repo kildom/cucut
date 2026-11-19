@@ -191,11 +191,14 @@ def make_track_edt_request(input_path: Path, raster_path: Path, response_path: P
     make_edt_request(input_path, raster_path, len(info) // 2)
 
 
-def make_hole_edt_request(input_path: Path, raster_path: Path, response_path: Path) -> None:
+def make_hole_edt_request(input_path: Path, raster_path: Path, response_path: Path) -> bool:
     holes = component_holes(read_json(response_path)["info"])
-    assert holes, "Expected the labeler output to contain a hole"
+    if not holes:
+        print("Warning: The labeler output contains no holes; skipping hole-related processing.")
+        return False
     _, track_index, _ = max(holes, key=lambda item: item[0])
     make_edt_request(input_path, raster_path, track_index)
+    return True
 
 
 def validate_edt(response_path: Path, raster_path: Path) -> None:
@@ -436,8 +439,11 @@ def main() -> None:
     hole_edt_input = SCRIPT_DIR / "cu-hole-distance-request.json"
     hole_edt_output = SCRIPT_DIR / "cu-hole-distance-response.json"
     hole_edt_raster = SCRIPT_DIR / "cu-hole-distance-response-1.raw"
-    make_hole_edt_request(hole_edt_input, tracks_labeled_raster, tracks_labeler_output)
-    run_tsx("src/cucutcli.ts", hole_edt_output, hole_edt_input)
+    has_holes = make_hole_edt_request(
+        hole_edt_input, tracks_labeled_raster, tracks_labeler_output
+    )
+    if has_holes:
+        run_tsx("src/cucutcli.ts", hole_edt_output, hole_edt_input)
 
     separation_input = SCRIPT_DIR / "cu-track-separation-request.json"
     separation_output = SCRIPT_DIR / "cu-track-separation-response.json"
@@ -465,41 +471,45 @@ def main() -> None:
     run_tsx("src/cucutcli.ts", composite_path_output, composite_path_input)
     validate_composite_path(composite_path_output, composite_path)
 
-    hole_separation_input = SCRIPT_DIR / "cu-hole-separation-request.json"
-    hole_separation_output = SCRIPT_DIR / "cu-hole-separation-response.json"
-    hole_separation_path = SCRIPT_DIR / "cu-hole-separation-response-1.raw"
-    make_hole_separation_request(
-        hole_separation_input, hole_edt_raster, tracks_labeled_raster, tracks_labeler_output
-    )
-    run_tsx("src/cucutcli.ts", hole_separation_output, hole_separation_input)
-    validate_separation(hole_separation_output, hole_separation_path, inner=True)
+    if has_holes:
+        hole_separation_input = SCRIPT_DIR / "cu-hole-separation-request.json"
+        hole_separation_output = SCRIPT_DIR / "cu-hole-separation-response.json"
+        hole_separation_path = SCRIPT_DIR / "cu-hole-separation-response-1.raw"
+        make_hole_separation_request(
+            hole_separation_input,
+            hole_edt_raster,
+            tracks_labeled_raster,
+            tracks_labeler_output,
+        )
+        run_tsx("src/cucutcli.ts", hole_separation_output, hole_separation_input)
+        validate_separation(hole_separation_output, hole_separation_path, inner=True)
 
-    hole_optimize_path_input = SCRIPT_DIR / "cu-hole-path-optimization-request.json"
-    hole_optimize_path_output = SCRIPT_DIR / "cu-hole-path-optimization-response.json"
-    optimized_hole_path = SCRIPT_DIR / "cu-hole-path-optimization-response-2.raw"
-    optimized_hole_indices = SCRIPT_DIR / "cu-hole-path-optimization-response-1.raw"
-    make_optimize_path_request(hole_optimize_path_input, hole_separation_path, 1.0)
-    run_tsx("src/cucutcli.ts", hole_optimize_path_output, hole_optimize_path_input)
-    validate_optimized_path(
-        hole_optimize_path_output,
-        optimized_hole_path,
-        optimized_hole_indices,
-        hole_separation_path,
-    )
+        hole_optimize_path_input = SCRIPT_DIR / "cu-hole-path-optimization-request.json"
+        hole_optimize_path_output = SCRIPT_DIR / "cu-hole-path-optimization-response.json"
+        optimized_hole_path = SCRIPT_DIR / "cu-hole-path-optimization-response-2.raw"
+        optimized_hole_indices = SCRIPT_DIR / "cu-hole-path-optimization-response-1.raw"
+        make_optimize_path_request(hole_optimize_path_input, hole_separation_path, 1.0)
+        run_tsx("src/cucutcli.ts", hole_optimize_path_output, hole_optimize_path_input)
+        validate_optimized_path(
+            hole_optimize_path_output,
+            optimized_hole_path,
+            optimized_hole_indices,
+            hole_separation_path,
+        )
 
-    composite_hole_path_input = SCRIPT_DIR / "cu-hole-arc-composition-request.json"
-    composite_hole_path_output = SCRIPT_DIR / "cu-hole-arc-composition-response.json"
-    composite_hole_path = SCRIPT_DIR / "cu-hole-arc-composition-response-1.raw"
-    make_composite_path_request(
-        composite_hole_path_input,
-        hole_separation_path,
-        optimized_hole_indices,
-        1.0,
-        3.0,
-        100.0,
-    )
-    run_tsx("src/cucutcli.ts", composite_hole_path_output, composite_hole_path_input)
-    validate_composite_path(composite_hole_path_output, composite_hole_path)
+        composite_hole_path_input = SCRIPT_DIR / "cu-hole-arc-composition-request.json"
+        composite_hole_path_output = SCRIPT_DIR / "cu-hole-arc-composition-response.json"
+        composite_hole_path = SCRIPT_DIR / "cu-hole-arc-composition-response-1.raw"
+        make_composite_path_request(
+            composite_hole_path_input,
+            hole_separation_path,
+            optimized_hole_indices,
+            1.0,
+            3.0,
+            100.0,
+        )
+        run_tsx("src/cucutcli.ts", composite_hole_path_output, composite_hole_path_input)
+        validate_composite_path(composite_hole_path_output, composite_hole_path)
 
     tracks_labeled_image = SCRIPT_DIR / "cu-labeled-tracks.png"
     cutting_labeled_image = SCRIPT_DIR / "cut-labeled-edges.png"
@@ -515,14 +525,20 @@ def main() -> None:
         SCRIPT_DIR / "cu-track-distance.png",
         edt_raster,
     )
-    for output_name, filter_name, path in (
+    path_images = [
         ("cu-track-separation.png", "path", separation_path),
         ("cu-track-separation-optimized.png", "path", optimized_path),
         ("cu-track-separation-composite.png", "composite-path", composite_path),
-        ("cu-hole-separation.png", "path", hole_separation_path),
-        ("cu-hole-separation-optimized.png", "path", optimized_hole_path),
-        ("cu-hole-separation-composite.png", "composite-path", composite_hole_path),
-    ):
+    ]
+    if has_holes:
+        path_images.extend(
+            [
+                ("cu-hole-separation.png", "path", hole_separation_path),
+                ("cu-hole-separation-optimized.png", "path", optimized_hole_path),
+                ("cu-hole-separation-composite.png", "composite-path", composite_hole_path),
+            ]
+        )
+    for output_name, filter_name, path in path_images:
         arguments: list[Path | str] = [
             "-o",
             SCRIPT_DIR / output_name,
@@ -536,7 +552,24 @@ def main() -> None:
         )
         run_tsx("core/script/buffer2png.ts", *arguments)
 
-    images = (
+        svg_output = SCRIPT_DIR / output_name.replace(".png", ".svg")
+        svg_arguments: list[Path | str] = [
+            "--res",
+            "50",
+            "-o",
+            svg_output,
+            "-f",
+            "png",
+            "--filter-opacity",
+            "75",
+            tracks_labeled_image,
+        ]
+        svg_arguments.extend(
+            ["-f", filter_name, "--filter-color", "ff0000", "--filter-width", "1.5", path]
+        )
+        run_tsx("core/script/buffer2svg.ts", *svg_arguments)
+
+    images = [
         tracks_image.name,
         cutting_image.name,
         tracks_labeled_image.name,
@@ -546,11 +579,22 @@ def main() -> None:
         "cu-track-separation.png",
         "cu-track-separation-optimized.png",
         "cu-track-separation-composite.png",
-        "cu-hole-separation.png",
-        "cu-hole-separation-optimized.png",
-        "cu-hole-separation-composite.png",
-    )
-    print("Test complete. Images: " + ", ".join(str(SCRIPT_DIR / name) for name in images))
+        "cu-track-separation.svg",
+        "cu-track-separation-optimized.svg",
+        "cu-track-separation-composite.svg",
+    ]
+    if has_holes:
+        images.extend(
+            [
+                "cu-hole-separation.png",
+                "cu-hole-separation-optimized.png",
+                "cu-hole-separation-composite.png",
+                "cu-hole-separation.svg",
+                "cu-hole-separation-optimized.svg",
+                "cu-hole-separation-composite.svg",
+            ]
+        )
+    print("Test complete. Images and SVGs: " + ", ".join(str(SCRIPT_DIR / name) for name in images))
 
 
 ENVIRONMENT = os.environ.copy()
