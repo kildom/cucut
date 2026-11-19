@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SVG to G-code debugger</title>
+  <link rel="stylesheet" href="main.css">
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">CuCut · local debugging tool</p>
+        <h1>SVG to G-code</h1>
+        <p class="subtitle">Inspect stroked line and circular-arc paths, configure milling passes, and export one file per tool.</p>
+      </div>
+      <button id="sample-button" class="button secondary" type="button">Load pcb.svg</button>
+    </header>
+
+    <section id="drop-zone" class="drop-zone" tabindex="0" aria-label="Upload an SVG file">
+      <input id="file-input" type="file" accept=".svg,image/svg+xml" hidden>
+      <strong>Drop an SVG file here</strong>
+      <span>or <button id="browse-button" class="link-button" type="button">browse files</button></span>
+      <small>Files are parsed in this browser and are not uploaded.</small>
+    </section>
+
+    <section class="panel global-panel" aria-labelledby="global-heading">
+      <div class="section-heading">
+        <div><p class="eyebrow">Machine setup</p><h2 id="global-heading">Global parameters</h2></div>
+        <div id="file-name" class="file-name">No SVG loaded</div>
+      </div>
+      <div class="global-fields">
+        <label>Rapid height (mm)<input id="rapid-height" type="number" step="any" value="5"></label>
+        <label>Feed height (mm)<input id="feed-height" type="number" step="any" value="1"></label>
+        <label class="check-field"><input id="mirror" type="checkbox"><span>Mirror X around origin</span></label>
+      </div>
+      <p class="hint">Depth order must satisfy final depth ≤ initial depth ≤ feed height ≤ rapid height.</p>
+    </section>
+
+    <section class="panel paths-panel" aria-labelledby="paths-heading">
+      <div class="section-heading">
+        <div><p class="eyebrow">Color groups</p><h2 id="paths-heading">Milling parameters</h2></div>
+        <span id="path-summary" class="summary">Upload an SVG to begin</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Stroke</th><th>Stroke widths (mm)</th><th>Order</th><th>Tool index</th><th>Tool size (mm)</th>
+            <th>Initial depth (mm)</th><th>Final depth (mm)</th><th>Steps</th><th>Horizontal speed (mm/min)</th>
+            <th>Vertical speed (mm/min)</th><th>Origin</th><th>Revert rotation</th><th>Step depth (mm)</th>
+          </tr></thead>
+          <tbody id="groups-body"><tr class="empty-row"><td colspan="13">No paths loaded.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel diagnostics-panel" aria-labelledby="diagnostics-heading">
+      <div class="section-heading"><div><p class="eyebrow">SVG inspection</p><h2 id="diagnostics-heading">Messages</h2></div></div>
+      <ul id="messages" class="messages"><li class="muted">Choose an SVG file to inspect its paths.</li></ul>
+    </section>
+
+    <section id="outputs-panel" class="panel outputs-panel" hidden aria-labelledby="outputs-heading">
+      <div class="section-heading"><div><p class="eyebrow">Generated files</p><h2 id="outputs-heading">G-code downloads</h2></div></div>
+      <ul id="outputs" class="messages"></ul>
+    </section>
+
+    <footer class="actions">
+      <span id="status" role="status" aria-live="polite">Waiting for an SVG file.</span>
+      <button id="generate-button" class="button primary" type="button" disabled>Generate G-code</button>
+    </footer>
+  </main>
+</body>
+</html>
