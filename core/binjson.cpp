@@ -287,6 +287,217 @@ void generate(const Any& value, Buffer<>& buffer, int32_t bufferOffset,
     generateRecursive(value, buffer, array, bufferIndex - arrayOffset);
 }
 
+static void writeString(Buffer<char>& buffer, const char* text)
+{
+    int32_t offset = buffer.size() - 1;
+    int totalSize = strlen(text) + 1;
+    buffer.grow(offset + totalSize);
+    std::memcpy(buffer.raw() + offset, text, totalSize);
+}
+
+
+static void writeEscapedString(Buffer<char>& buffer, const std::string& text)
+{
+    int32_t length = text.length();
+    auto dst = buffer.raw() + buffer.size() - 1;
+    auto dstResize = dst + length + 1;
+    buffer.grow(buffer.size() + length + 10);
+    auto src = text.c_str();
+    auto srcEnd = src + length;
+    while (src < srcEnd) {
+        if (dst >= dstResize) {
+            auto dst = buffer.raw() + buffer.size() - 1;
+            auto dstResize = dst + length + 1;
+            buffer.grow(buffer.size() + length + 10);            
+        }
+        char c = *src++;
+        switch (c) {
+        case '"':
+            dst[0] = '\\';
+            dst[1] = '"';
+            dst += 2;
+            break;
+        case '\\':
+            dst[0] = '\\';
+            dst[1] = '\\';
+            dst += 2;
+            break;
+        case '\b':
+            dst[0] = '\\';
+            dst[1] = 'b';
+            dst += 2;
+            break;
+        case '\f':
+            dst[0] = '\\';
+            dst[1] = 'f';
+            dst += 2;
+            break;
+        case '\n':
+            dst[0] = '\\';
+            dst[1] = 'n';
+            dst += 2;
+            break;
+        case '\r':
+            dst[0] = '\\';
+            dst[1] = 'r';
+            dst += 2;
+            break;
+        case '\t':
+            dst[0] = '\\';
+            dst[1] = 't';
+            dst += 2;
+            break;
+        case '\x7F':
+            dst[0] = '\\';
+            dst[1] = 'u';
+            dst[2] = '0';
+            dst[3] = '0';
+            dst[4] = '7';
+            dst[5] = 'F';
+            dst += 6;
+            break;
+        default:
+            if ((uint8_t)c >= ' ') {
+                *dst++ = c;
+            } else {
+                static const char hex[] = "0123456789ABCDEF";
+                dst[0] = '\\';
+                dst[1] = 'u';
+                dst[2] = '0';
+                dst[3] = '0';
+                dst[4] = hex[(c >> 4) & 0x03];
+                dst[5] = hex[c & 0x0F];
+                dst += 6;
+            }
+            break;
+        }
+    }
+}
+
+static void writeString(Buffer<char>& buffer, const std::string& text)
+{
+    int32_t offset = buffer.size() - 1;
+    int totalSize = text.length() + 1;
+    buffer.grow(offset + totalSize);
+    std::memcpy(buffer.raw() + offset, text.c_str(), totalSize);
+}
+
+static void writeInt(Buffer<char>& buffer, int value)
+{
+    int32_t offset = buffer.size() - 1;
+    buffer.grow(offset + 16);
+    int num = sprintf(buffer.raw() + offset, "%d", value);
+    buffer.grow(offset + num + 1);
+}
+
+static void writeDouble(Buffer<char>& buffer, double value)
+{
+    int32_t offset = buffer.size() - 1;
+    buffer.grow(offset + 16 + DBL_DECIMAL_DIG);
+    int num = snprintf(buffer.raw() + offset, 16 + DBL_DECIMAL_DIG, "%.*g", DBL_DECIMAL_DIG, value);
+    buffer.grow(offset + num + 1);
+}
+
+static void writeIndent(Buffer<char>& buffer, int indent)
+{
+    int32_t offset = buffer.size() - 1;
+    buffer.grow(offset + indent + 1);
+    std::memset(buffer.raw() + offset, ' ', indent);
+    buffer.raw()[offset + indent] = 0;
+}
+
+static void stringifyRecursive(const Any& value, Buffer<char>& buffer,
+    std::vector<Buffer<>>& array, int32_t bufferIndexOffset, int indent)
+{
+    auto type = value->getType();
+    int32_t offset = buffer.size() - 1;
+
+    switch (type)
+    {
+    case BinJSONType::NUL: {
+        writeString(buffer, "null");
+        break;
+    }
+    case BinJSONType::ERROR: {
+        writeString(buffer, (indent > 0) ? "{ \"\\u001A\": \"error\", \"message\": " : "{\"\\u001A\":\"error\",\"message\":");
+        writeEscapedString(buffer, value->string());
+        writeString(buffer, (indent > 0) ? " }" : "}");
+        break;
+    }
+    case BinJSONType::BINARY: {
+        uint32_t v = array.size() + bufferIndexOffset;
+        array.emplace_back(value->buffer());
+        writeString(buffer, (indent > 0) ? "{ \"\\u001A\": \"binary\", \"index\": " : "{\"\\u001A\":\"binary\",\"index\":");
+        writeInt(buffer, v);
+        writeString(buffer, (indent > 0) ? " }" : "}");
+        break;
+    }
+    case BinJSONType::BOOLEAN: {
+        writeString(buffer, value->boolean() ? "true" : "false");
+        break;
+    }
+    case BinJSONType::NUMBER: {
+        writeDouble(buffer, value->number());
+        break;
+    }
+    case BinJSONType::STRING: {
+        writeString(buffer, "\"");
+        writeEscapedString(buffer, value->string());
+        writeString(buffer, "\"");
+        break;
+    }
+    case BinJSONType::ARRAY: {
+        auto v = value->to<ArrayValue>();
+        int count = v->length();
+        if (count > 0) {
+            writeString(buffer, (indent > 0) ? "[" : "[\n");
+            for (int i = 0; i < count; i++) {
+                writeIndent(buffer, indent + 1);
+                stringifyRecursive(v->get(i), buffer, array, bufferIndexOffset, indent + 1);
+                if (i < count - 1) {
+                    writeString(buffer, (indent > 0) ? "," : ",\n");
+                } else {
+                    writeString(buffer, (indent > 0) ? "" : "\n");
+                }
+            }
+            writeIndent(buffer, indent);
+            writeString(buffer, "]");
+        } else {
+            writeString(buffer, "[]");
+        }
+        break;
+    }
+    case BinJSONType::OBJECT: {
+        auto v = value->to<ObjectValue>();
+        int count = v->length();
+        if (count > 0) {
+            writeString(buffer, (indent > 0) ? "{" : "{\n");
+            int i = 0;
+            for (auto pair : v->value) {
+                writeIndent(buffer, indent + 1);
+                writeEscapedString(buffer, pair.first);
+                writeString(buffer, (indent > 0) ? ": " : ":");
+                stringifyRecursive(v->get(i), buffer, array, bufferIndexOffset, indent + 1);
+                if (i < count - 1) {
+                    writeString(buffer, (indent > 0) ? "," : ",\n");
+                } else {
+                    writeString(buffer, (indent > 0) ? "" : "\n");
+                }
+                i++;
+            }
+            writeIndent(buffer, indent);
+            writeString(buffer, "]");
+        } else {
+            writeString(buffer, "{}");
+        }
+        break;
+    }
+    default:
+        CUCUT_ASSERT(false, "Unknow type of value.");
+        break;
+    }
+}
+
 };
 
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
