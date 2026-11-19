@@ -337,9 +337,12 @@ function readSvg(text) {
       }
       const strokeWidth = widthUnits * Math.sqrt(Math.abs(m.a * m.d - m.b * m.c));
       const color = normalizeColor(style.stroke);
+      const titleElement = [...element.children].find((child) => child.localName === 'title');
+      const title = titleElement?.textContent.trim() || element.getAttribute('title')?.trim() || '';
       const transformed = subpaths.filter((subpath) => subpath.segments.length).map((subpath, partIndex) => {
         const path = transformedSubpath(subpath, m, strokeWidth);
         path.id = subpaths.length > 1 ? `${id} · part ${partIndex + 1}` : id;
+        path.title = title;
         path.color = color;
         path.group = null;
         path.bounds = pathBounds(path);
@@ -381,12 +384,25 @@ function renderGroups() {
   }
   loadedGroups.forEach((group, index) => {
     const row = document.createElement('tr'); row.dataset.group = String(index);
-    const stroke = document.createElement('td'); stroke.className = 'stroke-cell';
+    const swatchCell = document.createElement('td'); swatchCell.className = 'swatch-cell';
     const swatch = document.createElement('span'); swatch.className = 'swatch'; swatch.style.setProperty('--swatch', group.color === 'none' ? 'transparent' : group.color); swatch.title = group.color;
-    const colorText = document.createElement('span'); colorText.textContent = group.color;
-    stroke.append(swatch, colorText);
-    const widths = document.createElement('td'); widths.className = 'widths'; widths.textContent = group.widths.map((width) => `${format(width)} mm`).join(', ');
-    row.append(stroke, widths);
+    swatchCell.append(swatch);
+    const detailsCell = document.createElement('td'); detailsCell.className = 'stroke-details';
+    const details = document.createElement('span');
+    details.textContent = `${group.color} · ${group.widths.map((width) => `${format(width)} mm`).join(', ')}`;
+    detailsCell.append(details);
+    const titles = group.paths.map((path) => path.title).filter(Boolean);
+    if (titles.length) {
+      detailsCell.append(document.createElement('br'));
+      titles.forEach((title, titleIndex) => {
+        if (titleIndex) detailsCell.append(document.createElement('br'));
+        const titleElement = document.createElement('span');
+        titleElement.className = 'path-title';
+        titleElement.textContent = title;
+        detailsCell.append(titleElement);
+      });
+    }
+    row.append(swatchCell, detailsCell);
     const values = { ...defaults, order: index + 1, tool: index + 1 };
     for (const [field, value] of Object.entries(values)) row.append(makeCell(makeInput(field, value, { short: ['order', 'tool', 'steps'].includes(field) })));
     const originCell = document.createElement('td');
