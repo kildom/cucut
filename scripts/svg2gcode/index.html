@@ -15,7 +15,12 @@
         <h1>SVG to G-code</h1>
         <p class="subtitle">Inspect stroked line and circular-arc paths, configure milling passes, and export one file per tool.</p>
       </div>
-      <button id="sample-button" class="button secondary" type="button">Load pcb.svg</button>
+      <div class="header-actions">
+        <button id="sample-button" class="button secondary" type="button">Load data files</button>
+        <button id="download-config" class="button secondary" type="button">Download config</button>
+        <button id="upload-config-button" class="button secondary" type="button">Upload config</button>
+        <input id="config-file-input" type="file" accept=".json,application/json" hidden>
+      </div>
     </header>
 
     <section id="drop-zone" class="drop-zone" tabindex="0" aria-label="Upload an SVG file">
@@ -48,16 +53,53 @@
           <thead><tr>
             <th>Color</th><th>Stroke details</th><th>Order</th><th>Tool<br>index</th><th>Tool<br>size<br>(mm)</th>
             <th>Initial<br>depth<br>(mm)</th><th>Final<br>depth<br>(mm)</th><th>Steps</th><th>Horizontal<br>speed<br>(mm/min)</th>
-            <th>Vertical<br>speed<br>(mm/min)</th><th>Origin</th><th>Revert<br>rotation</th><th>Step<br>depth<br>(mm)</th>
+            <th>Vertical<br>speed<br>(mm/min)</th><th>Origin</th><th>Revert<br>rotation</th><th class="step-depth-heading">Step depth<br>(mm)</th>
           </tr></thead>
           <tbody id="groups-body"><tr class="empty-row"><td colspan="13">No paths loaded.</td></tr></tbody>
         </table>
       </div>
     </section>
 
+    <section class="panel drill-panel" aria-labelledby="drill-heading">
+      <div class="section-heading">
+        <div><p class="eyebrow">Excellon drilling</p><h2 id="drill-heading">Drill files</h2></div>
+        <span id="drill-summary" class="summary">No drill files loaded</span>
+      </div>
+      <div id="drill-drop-zone" class="drop-zone drill-drop-zone" tabindex="0" aria-label="Upload Excellon drill files">
+        <input id="drill-file-input" type="file" accept=".drl,.xln,.exc,.txt,application/octet-stream" multiple hidden>
+        <strong>Drop one or more Excellon files here</strong>
+        <span>or <button id="drill-browse-button" class="link-button" type="button">browse files</button></span>
+      </div>
+      <ul id="drill-files" class="uploaded-files" hidden></ul>
+      <div class="global-fields drill-global-fields">
+        <label>Rapid height (mm)<input id="drill-rapid-height" type="number" step="any" value="5"></label>
+        <label>Feed height (mm)<input id="drill-feed-height" type="number" step="any" value="1"></label>
+        <label>Drill depth (mm)<input id="drill-depth" type="number" step="any" value="-1"></label>
+        <label class="check-field"><input id="drill-mirror" type="checkbox"><span>Mirror X around origin</span></label>
+      </div>
+      <div class="table-wrap drill-table-wrap">
+        <table>
+          <thead><tr><th>File name</th><th>File tool<br>index</th><th>File diameter<br>(mm)</th><th>Tool<br>index</th><th>Diameter<br>(mm)</th><th>Feed speed<br>(mm/min)</th></tr></thead>
+          <tbody id="drill-tools-body"><tr class="empty-row"><td colspan="6">No drill tools loaded.</td></tr></tbody>
+        </table>
+      </div>
+      <p class="hint">Drill coordinates are interpreted in millimeters and already use the SVG/G-code origin.</p>
+    </section>
+
     <section class="panel diagnostics-panel" aria-labelledby="diagnostics-heading">
       <div class="section-heading"><div><p class="eyebrow">SVG inspection</p><h2 id="diagnostics-heading">Messages</h2></div></div>
       <ul id="messages" class="messages"><li class="muted">Choose an SVG file to inspect its paths.</li></ul>
+    </section>
+
+    <section id="preview-panel" class="panel preview-panel" hidden aria-labelledby="preview-heading">
+      <div class="section-heading">
+        <div><p class="eyebrow">Generated geometry</p><h2 id="preview-heading">Board preview</h2></div>
+        <button id="preview-reset" class="button secondary" type="button">Reset view</button>
+      </div>
+      <div id="preview-viewport" class="preview-viewport">
+        <svg id="preview-svg" role="img" aria-label="Generated PCB milling and drilling preview" viewBox="0 0 1 1" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+      <p class="hint">Drag to pan. Scroll to zoom. Preview reflects the paths and drill tools used for the latest G-code.</p>
     </section>
 
     <section id="outputs-panel" class="panel outputs-panel" hidden aria-labelledby="outputs-heading">

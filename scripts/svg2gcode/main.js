@@ -8,8 +8,15 @@ let loadedGroups = [];
 let loadedName = '';
 let svgWarnings = [];
 let outputUrls = [];
+let loadedDrillFiles = [];
+let nextDrillFileId = 1;
+let previewBaseView = null;
+let previewView = null;
+let previewPointer = null;
 
 const defaults = { order: 1, tool: 1, size: 1.6, initial: -0.2, final: -1, steps: 4, horizontal: 300, vertical: 100 };
+const CONFIG_STORAGE_KEY = 'cucut.svg2gcode.config.v1';
+let rememberedConfig = { version: 1, globals: {}, drillGlobals: {}, colors: {}, drills: {} };
 const unitToMm = { mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6, px: 25.4 / 96, q: 0.25 };
 
 function setMessages(items) {
@@ -29,6 +36,98 @@ function setMessages(items) {
   }
 }
 
+function appendMessage(item) {
+  if (messages.querySelector('.muted')) messages.replaceChildren();
+  const li = document.createElement('li');
+  li.className = item.type || 'error';
+  li.textContent = item.text;
+  messages.append(li);
+}
+
+function isRecord(value) { return value && typeof value === 'object' && !Array.isArray(value); }
+function normalizeConfig(value) {
+  if (!isRecord(value) || value.version !== 1) throw new Error('Unsupported configuration file version.');
+  return {
+    version: 1,
+    globals: isRecord(value.globals) ? value.globals : {},
+    drillGlobals: isRecord(value.drillGlobals) ? value.drillGlobals : {},
+    colors: isRecord(value.colors) ? value.colors : {},
+    drills: isRecord(value.drills) ? value.drills : {},
+  };
+}
+function loadStoredConfig() {
+  try {
+    const saved = localStorage.getItem(CONFIG_STORAGE_KEY);
+    if (saved) rememberedConfig = normalizeConfig(JSON.parse(saved));
+  } catch {
+    rememberedConfig = { version: 1, globals: {}, drillGlobals: {}, colors: {}, drills: {} };
+  }
+}
+function drillConfigBaseKey(fileName, diameter) {
+  const baseName = fileName.split(/[\\/]/).pop().trim().toLowerCase();
+  return `${baseName}|${diameter === null ? 'unknown' : Number(diameter).toFixed(4)}`;
+}
+function drillConfigKey(fileName, diameter, fileTool) {
+  return `${drillConfigBaseKey(fileName, diameter)}|T${fileTool}`;
+}
+function applyGlobalConfig() {
+  const fields = {
+    rapidHeight: '#rapid-height', feedHeight: '#feed-height', mirror: '#mirror',
+  };
+  for (const [key, selector] of Object.entries(fields)) {
+    const value = rememberedConfig.globals[key];
+    if (value !== undefined) $(selector).type === 'checkbox' ? $(selector).checked = Boolean(value) : $(selector).value = value;
+  }
+  const drillFields = {
+    rapidHeight: '#drill-rapid-height', feedHeight: '#drill-feed-height', depth: '#drill-depth', mirror: '#drill-mirror',
+  };
+  for (const [key, selector] of Object.entries(drillFields)) {
+    const value = rememberedConfig.drillGlobals[key];
+    if (value !== undefined) $(selector).type === 'checkbox' ? $(selector).checked = Boolean(value) : $(selector).value = value;
+  }
+}
+function applyRowConfig(row, values) {
+  if (!isRecord(values)) return;
+  for (const [field, value] of Object.entries(values)) {
+    const input = row.querySelector(`[data-field="${field}"]`);
+    if (!input || value === undefined) continue;
+    if (input.type === 'checkbox') input.checked = Boolean(value);
+    else input.value = value;
+  }
+}
+function saveConfiguration() {
+  const globals = {
+    rapidHeight: $('#rapid-height').value, feedHeight: $('#feed-height').value, mirror: $('#mirror').checked,
+  };
+  const drillGlobals = {
+    rapidHeight: $('#drill-rapid-height').value, feedHeight: $('#drill-feed-height').value,
+    depth: $('#drill-depth').value, mirror: $('#drill-mirror').checked,
+  };
+  const colors = { ...rememberedConfig.colors };
+  for (const row of groupsBody.querySelectorAll('tr[data-group]')) {
+    const group = loadedGroups[Number(row.dataset.group)];
+    if (!group) continue;
+    colors[group.color] = Object.fromEntries([...row.querySelectorAll('[data-field]')].map((input) => [input.dataset.field, input.type === 'checkbox' ? input.checked : input.value]));
+  }
+  const drills = { ...rememberedConfig.drills };
+  for (const row of $('#drill-tools-body').querySelectorAll('tr[data-file-id]')) {
+    const file = loadedDrillFiles.find((item) => item.id === Number(row.dataset.fileId));
+    const tool = file?.tools.find((item) => item.fileTool === Number(row.dataset.fileTool));
+    if (!file || !tool) continue;
+    drills[drillConfigKey(file.name, tool.diameter, tool.fileTool)] = {
+      toolIndex: row.querySelector('[data-field="tool-index"]').value,
+      previewDiameter: row.querySelector('[data-field="preview-diameter"]').value,
+      feedSpeed: row.querySelector('[data-field="feed-speed"]').value,
+    };
+  }
+  rememberedConfig = { version: 1, globals, drillGlobals, colors, drills };
+  try {
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(rememberedConfig));
+    return true;
+  } catch {
+    return false;
+  }
+}
 function parseLength(value) {
   const match = String(value || '').trim().match(/^([+-]?(?:\d*\.)?\d+(?:e[+-]?\d+)?)\s*(mm|cm|in|pt|pc|px|q)?$/i);
   if (!match) return null;
@@ -364,6 +463,93 @@ function readSvg(text) {
   return { groups: [...grouped.values()], errors };
 }
 
+function parseExcellon(text) {
+  let unit = 'INCH';
+  let unitDeclared = false;
+  let suppression = 'LZ';
+  let format = { integer: 2, decimal: 4 };
+  let customFormat = false;
+  let inBody = false;
+  let absolute = true;
+  let currentTool = null;
+  const position = { x: 0, y: 0 };
+  const tools = new Map();
+  const errors = [];
+  const ensureTool = (index) => {
+    if (!tools.has(index)) tools.set(index, { fileTool: index, diameter: null, holes: [] });
+    return tools.get(index);
+  };
+  const unitScale = () => unit === 'INCH' ? 25.4 : 1;
+  const parseCoordinate = (raw) => {
+    if (raw.includes('.')) return Number(raw) * unitScale();
+    const sign = raw.startsWith('-') ? -1 : 1;
+    let digits = raw.replace(/^[+-]/, '');
+    if (suppression === 'TZ') digits = digits.padEnd(format.integer + format.decimal, '0');
+    return sign * Number(digits) / (10 ** format.decimal) * unitScale();
+  };
+
+  for (const [lineIndex, sourceLine] of String(text).split(/\r?\n/).entries()) {
+    const line = sourceLine.trim().toUpperCase();
+    if (!line) continue;
+    const formatMatch = line.match(/(?:FILE_)?FORMAT\s*=\s*(\d+)\s*:\s*(\d+)/);
+    if (formatMatch) {
+      format = { integer: Number(formatMatch[1]), decimal: Number(formatMatch[2]) };
+      customFormat = true;
+    }
+    const mode = line.match(/\b(METRIC|INCH)(?:\s*,\s*(LZ|TZ))?(?:\s*,\s*(\d+)\.(\d+))?/);
+    if (mode) {
+      unit = mode[1]; unitDeclared = true;
+      if (mode[2]) suppression = mode[2];
+      if (mode[3]) { format = { integer: Number(mode[3]), decimal: Number(mode[4]) }; customFormat = true; }
+      if (!customFormat) format = unit === 'METRIC' ? { integer: 3, decimal: 3 } : { integer: 2, decimal: 4 };
+      continue;
+    }
+    if (line === '%') { inBody = true; continue; }
+    if (/^M30\b/.test(line)) break;
+    if (/\bG90\b/.test(line)) absolute = true;
+    if (/\bG91\b/.test(line)) absolute = false;
+    if (/\bG85\b/.test(line)) {
+      errors.push(`line ${lineIndex + 1}: routed slot (G85) is not supported`);
+      continue;
+    }
+
+    const toolMatch = line.match(/^T\s*(\d+)(?:C\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)))?$/);
+    if (toolMatch) {
+      const index = Number(toolMatch[1]);
+      const tool = ensureTool(index);
+      currentTool = index;
+      if (toolMatch[2] !== undefined) {
+        const diameter = Number(toolMatch[2]) * unitScale();
+        if (!(diameter > 0) || !Number.isFinite(diameter)) errors.push(`line ${lineIndex + 1}: invalid diameter for T${index}`);
+        else tool.diameter = diameter;
+      }
+      continue;
+    }
+
+    const coordinates = [...line.matchAll(/([XY])\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))/g)];
+    if (!coordinates.length || !inBody) continue;
+    if (currentTool === null) {
+      errors.push(`line ${lineIndex + 1}: drill coordinates appear before a tool is selected`);
+      continue;
+    }
+    const next = { ...position };
+    for (const match of coordinates) {
+      const axis = match[1].toLowerCase();
+      const value = parseCoordinate(match[2]);
+      if (!Number.isFinite(value)) { errors.push(`line ${lineIndex + 1}: invalid ${axis.toUpperCase()} coordinate`); continue; }
+      next[axis] = absolute ? value : position[axis] + value;
+    }
+    position.x = next.x; position.y = next.y;
+    ensureTool(currentTool).holes.push({ x: position.x, y: position.y });
+  }
+
+  const parsedTools = [...tools.values()];
+  if (!parsedTools.length) throw new Error('no tool declarations or selections were found');
+  if (!parsedTools.some((tool) => tool.holes.length)) throw new Error('no drill coordinates were found');
+  if (errors.length) throw new Error(errors.join('; '));
+  return { tools: parsedTools, warning: unitDeclared ? '' : 'No METRIC/INCH declaration found; assumed INCH.' };
+}
+
 function makeInput(field, value, options = {}) {
   const input = document.createElement('input');
   input.className = `cell-input${options.short ? ' short' : ''}`;
@@ -379,7 +565,7 @@ function renderGroups() {
     const row = document.createElement('tr'); row.className = 'empty-row';
     const cell = document.createElement('td'); cell.colSpan = 13; cell.textContent = 'No paths loaded.'; row.append(cell); groupsBody.append(row);
     $('#path-summary').textContent = 'Upload an SVG to begin';
-    $('#generate-button').disabled = true;
+    updateValidation();
     return;
   }
   loadedGroups.forEach((group, index) => {
@@ -409,7 +595,11 @@ function renderGroups() {
     const origin = document.createElement('input'); origin.type = 'checkbox'; origin.className = 'group-check'; origin.dataset.field = 'origin'; origin.setAttribute('aria-label', 'Use this group as origin and exclude it from output'); originCell.append(origin); row.append(originCell);
     const reverseCell = document.createElement('td');
     const reverse = document.createElement('input'); reverse.type = 'checkbox'; reverse.className = 'group-check'; reverse.dataset.field = 'reverse'; reverse.setAttribute('aria-label', 'Revert milling direction'); reverseCell.append(reverse); row.append(reverseCell);
-    const stepCell = document.createElement('td'); const step = document.createElement('output'); step.className = 'step-output'; step.dataset.stepOutput = 'true'; step.textContent = format((defaults.final - defaults.initial) / defaults.steps); stepCell.append(step); row.append(stepCell);
+    const stepCell = document.createElement('td'); stepCell.className = 'step-depth-cell';
+    const step = document.createElement('output'); step.className = 'step-output'; step.dataset.stepOutput = 'true';
+    step.textContent = format((defaults.final - defaults.initial) / defaults.steps);
+    stepCell.append(step); row.append(stepCell);
+    applyRowConfig(row, rememberedConfig.colors[group.color]);
     groupsBody.append(row);
   });
   $('#path-summary').textContent = `${loadedGroups.reduce((sum, group) => sum + group.paths.length, 0)} paths in ${loadedGroups.length} color groups`;
@@ -417,6 +607,45 @@ function renderGroups() {
   updateValidation();
 }
 function makeCell(content) { const td = document.createElement('td'); td.append(content); return td; }
+function renderDrillFiles() {
+  const list = $('#drill-files');
+  list.replaceChildren();
+  list.hidden = loadedDrillFiles.length === 0;
+  for (const file of loadedDrillFiles) {
+    const item = document.createElement('li'); item.className = 'uploaded-file';
+    const name = document.createElement('span'); name.className = 'uploaded-file-name'; name.textContent = `${file.name} · ${file.tools.length} tool(s)`;
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'remove-file'; remove.dataset.removeDrill = String(file.id); remove.textContent = 'Remove';
+    remove.setAttribute('aria-label', `Remove ${file.name}`);
+    item.append(name, remove); list.append(item);
+  }
+  renderDrillTools();
+}
+function renderDrillTools() {
+  const body = $('#drill-tools-body');
+  body.replaceChildren();
+  const entries = loadedDrillFiles.flatMap((file) => file.tools.map((tool) => ({ file, tool })));
+  if (!entries.length) {
+    const row = document.createElement('tr'); row.className = 'empty-row';
+    const cell = document.createElement('td'); cell.colSpan = 6; cell.textContent = 'No drill tools loaded.'; row.append(cell); body.append(row);
+  }
+  for (const { file, tool } of entries) {
+    const row = document.createElement('tr'); row.dataset.fileId = String(file.id); row.dataset.fileTool = String(tool.fileTool);
+    const fileName = document.createElement('td'); fileName.className = 'file-name-cell'; fileName.textContent = file.name;
+    const fileTool = document.createElement('td'); fileTool.textContent = `T${tool.fileTool}`;
+    const diameter = document.createElement('td'); diameter.textContent = tool.diameter === null ? '—' : `${format(tool.diameter)} mm`;
+    row.append(fileName, fileTool, diameter);
+    row.append(makeCell(makeInput('tool-index', tool.fileTool, { short: true })));
+    row.append(makeCell(makeInput('preview-diameter', tool.diameter ?? '', { short: true })));
+    row.append(makeCell(makeInput('feed-speed', 100, { short: true })));
+    const saved = rememberedConfig.drills[drillConfigKey(file.name, tool.diameter, tool.fileTool)]
+      || rememberedConfig.drills[drillConfigBaseKey(file.name, tool.diameter)];
+    if (saved) applyRowConfig(row, { 'tool-index': saved.toolIndex, 'preview-diameter': saved.previewDiameter, 'feed-speed': saved.feedSpeed });
+    body.append(row);
+  }
+  const toolCount = entries.length;
+  $('#drill-summary').textContent = loadedDrillFiles.length ? `${loadedDrillFiles.length} file(s) · ${toolCount} tool(s)` : 'No drill files loaded';
+  updateValidation();
+}
 function format(number) { return Number.isFinite(number) ? Number(number.toFixed(4)).toString() : '—'; }
 
 function rowSettings(row) {
@@ -437,16 +666,45 @@ function settingsErrors(settings) {
   if (!(settings.final <= settings.initial && settings.initial <= feed && feed <= rapid)) errors.push('depth/height order is invalid');
   return errors;
 }
+function drillSettingsErrors(row) {
+  const tool = Number(row.querySelector('[data-field="tool-index"]').value);
+  const diameter = Number(row.querySelector('[data-field="preview-diameter"]').value);
+  const speed = Number(row.querySelector('[data-field="feed-speed"]').value);
+  const rapid = Number($('#drill-rapid-height').value);
+  const feed = Number($('#drill-feed-height').value);
+  const depth = Number($('#drill-depth').value);
+  const errors = [];
+  if (!Number.isInteger(tool) || tool < 0) errors.push('tool index must be a non-negative integer');
+  if (!(diameter > 0) || !Number.isFinite(diameter)) errors.push('preview diameter must be greater than zero');
+  if (!(speed > 0) || !Number.isFinite(speed)) errors.push('feed speed must be greater than zero');
+  if (![rapid, feed, depth].every(Number.isFinite)) errors.push('drill heights and depth must be finite numbers');
+  if (!(depth <= feed && feed <= rapid)) errors.push('drill depth/feed/rapid order is invalid');
+  return errors;
+}
 function updateValidation() {
-  const rapid = Number($('#rapid-height').value), feed = Number($('#feed-height').value);
-  const globalValid = Number.isFinite(rapid) && Number.isFinite(feed);
-  [...groupsBody.querySelectorAll('tr[data-group]')].forEach((row) => {
+  const trackRows = [...groupsBody.querySelectorAll('tr[data-group]')];
+  let tracksValid = true;
+  for (const row of trackRows) {
     const settings = rowSettings(row); const errors = settingsErrors(settings);
     row.classList.toggle('invalid', errors.length > 0);
     const step = row.querySelector('[data-step-output]');
     step.textContent = Number.isFinite(settings.initial) && Number.isFinite(settings.final) && Number.isFinite(settings.steps) && settings.steps > 0 ? format((settings.final - settings.initial) / settings.steps) : '—';
-  });
-  $('#generate-button').disabled = !loadedGroups.length || !globalValid || [...groupsBody.querySelectorAll('tr[data-group]')].some((row) => settingsErrors(rowSettings(row)).length);
+    if (errors.length) tracksValid = false;
+  }
+  const drillRows = [...$('#drill-tools-body').querySelectorAll('tr[data-file-id]')];
+  let drillsValid = true;
+  for (const row of drillRows) {
+    const errors = drillSettingsErrors(row);
+    row.classList.toggle('invalid', errors.length > 0);
+    if (errors.length) drillsValid = false;
+  }
+  $('#generate-button').disabled = !(loadedGroups.length || loadedDrillFiles.length) || !tracksValid || !drillsValid;
+}
+
+function validateAndSaveSettings() {
+  updateValidation();
+  saveConfiguration();
+  $('#preview-panel').hidden = true;
 }
 
 function reverseSegments(segments) {
@@ -456,7 +714,7 @@ function gcodePath(path, reverse, mirror, origin) {
   let segments = reverse ? reverseSegments(path.segments) : path.segments.map((segment) => ({ ...segment }));
   const map = (p) => ({ x: (mirror ? -1 : 1) * (p.x - origin.x), y: p.y - origin.y });
   segments = segments.map((s) => ({ ...s, from: map(s.from), to: map(s.to), ...(s.type === 'arc' ? { center: map(s.center), sweep: s.sweep * (mirror ? -1 : 1) } : {}) }));
-  return { segments, start: segments[0].from, end: segments[segments.length - 1].to, group: path.group };
+  return { segments, start: segments[0].from, end: segments[segments.length - 1].to, group: path.group, closed: path.closed };
 }
 function distance(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 function routeFor(paths) {
@@ -483,6 +741,36 @@ function routeFor(paths) {
       for (let j = i + 1; j < route.length; j++) {
         const candidate = [...route.slice(0, i), ...route.slice(i, j + 1).reverse(), ...route.slice(j + 1)];
         if (routeCost(candidate) + 1e-9 < routeCost(route)) { route.splice(0, route.length, ...candidate); improved = true; }
+      }
+    }
+  }
+  return route;
+}
+function routeHoles(holes) {
+  if (holes.length < 3) return [...holes];
+  const remaining = new Set(holes), route = [];
+  let current = { x: 0, y: 0 };
+  while (remaining.size) {
+    let nearest, nearestDistance = Infinity;
+    for (const hole of remaining) {
+      const candidateDistance = distance(current, hole.start);
+      if (candidateDistance < nearestDistance) { nearest = hole; nearestDistance = candidateDistance; }
+    }
+    route.push(nearest); remaining.delete(nearest); current = nearest.end;
+  }
+  let improved = true, passes = 0;
+  while (improved && passes++ < 8) {
+    improved = false;
+    for (let i = 0; i < route.length - 1; i++) {
+      const before = i ? route[i - 1].end : { x: 0, y: 0 };
+      for (let j = i + 1; j < route.length; j++) {
+        const after = j + 1 < route.length ? route[j + 1].start : null;
+        const oldCost = distance(before, route[i].start) + (after ? distance(route[j].end, after) : 0);
+        const newCost = distance(before, route[j].start) + (after ? distance(route[i].end, after) : 0);
+        if (newCost + 1e-9 < oldCost) {
+          for (let left = i, right = j; left < right; left++, right--) [route[left], route[right]] = [route[right], route[left]];
+          improved = true;
+        }
       }
     }
   }
@@ -540,7 +828,7 @@ function generateFiles() {
     if (!byTool.has(settings.tool)) byTool.set(settings.tool, []);
     for (const path of group.paths) byTool.get(settings.tool).push({ path: gcodePath(path, settings.reverse, mirror, origin), settings });
   }
-  if (!byTool.size) throw new Error('No output paths remain. Uncheck Origin on a group to mill it.');
+  if (!byTool.size) return [];
   const files = [];
   for (const [tool, entries] of [...byTool].sort((a, b) => a[0] - b[0])) {
     const orders = [...new Set(entries.map(({ settings }) => settings.order))].sort((a, b) => a - b);
@@ -550,9 +838,195 @@ function generateFiles() {
       for (const path of ordered) emitPath(lines, path, path.settings, rapid, feed);
     }
     lines.push('M5', 'G17 G90', 'M2');
-    files.push({ tool, content: `${lines.join('\n')}\n` });
+    files.push({ tool, filename: `tool-${tool}.gcode`, content: `${lines.join('\n')}\n` });
   }
   return files;
+}
+
+function generateDrillFiles() {
+  const rapid = Number($('#drill-rapid-height').value);
+  const feed = Number($('#drill-feed-height').value);
+  const depth = Number($('#drill-depth').value);
+  const mirror = $('#drill-mirror').checked;
+  const rows = [...$('#drill-tools-body').querySelectorAll('tr[data-file-id]')];
+  const byTool = new Map();
+  for (const row of rows) {
+    const errors = drillSettingsErrors(row);
+    if (errors.length) throw new Error(`${row.querySelector('.file-name-cell').textContent}, T${row.dataset.fileTool}: ${errors.join(', ')}`);
+    const file = loadedDrillFiles.find((item) => item.id === Number(row.dataset.fileId));
+    const tool = file.tools.find((item) => item.fileTool === Number(row.dataset.fileTool));
+    const outputTool = Number(row.querySelector('[data-field="tool-index"]').value);
+    const speed = Number(row.querySelector('[data-field="feed-speed"]').value);
+    if (!byTool.has(outputTool)) byTool.set(outputTool, []);
+    for (const hole of tool.holes) {
+      const point = { x: mirror ? -hole.x : hole.x, y: hole.y };
+      byTool.get(outputTool).push({ start: point, end: point, speed });
+    }
+  }
+  const files = [];
+  for (const [tool, holes] of [...byTool].sort((a, b) => a[0] - b[0])) {
+    const lines = ['G17 G90', 'G21', `M6 T${tool}`, 'M3 S10000', 'G54'];
+    for (const hole of routeHoles(holes)) {
+      lines.push(`G0 ${xy(hole.start)} Z${gc(rapid)}`, `G0 Z${gc(feed)}`, zLine(depth, hole.speed), zLine(feed, hole.speed), `G0 Z${gc(rapid)}`);
+    }
+    lines.push('M5', 'G17 G90', 'M2');
+    files.push({ tool, filename: `drill-tool-${tool}.gcode`, content: `${lines.join('\n')}\n` });
+  }
+  return files;
+}
+
+function previewPathData(path) {
+  const point = (value) => `${gc(value.x)} ${gc(-value.y)}`;
+  const first = path.segments[0].from;
+  const commands = [`M ${point(first)}`];
+  for (const segment of path.segments) {
+    if (segment.type === 'line') commands.push(`L ${point(segment.to)}`);
+    else {
+      const largeArc = Math.abs(segment.sweep) > Math.PI ? 1 : 0;
+      const sweepFlag = segment.sweep < 0 ? 1 : 0;
+      commands.push(`A ${gc(segment.radius)} ${gc(segment.radius)} 0 ${largeArc} ${sweepFlag} ${point(segment.to)}`);
+    }
+  }
+  if (path.closed) commands.push('Z');
+  return commands.join(' ');
+}
+function collectPreviewGeometry() {
+  const rows = [...groupsBody.querySelectorAll('tr[data-group]')];
+  const settingsByGroup = new Map(rows.map((row) => [loadedGroups[Number(row.dataset.group)], rowSettings(row)]));
+  const originPaths = loadedGroups.filter((group) => settingsByGroup.get(group).origin).flatMap((group) => group.paths);
+  const origin = originPaths.length
+    ? { x: Math.min(...originPaths.map((path) => path.bounds.minX)), y: Math.max(...originPaths.map((path) => path.bounds.maxY)) }
+    : { x: 0, y: 0 };
+  const mirror = $('#mirror').checked;
+  const paths = [];
+  for (const group of loadedGroups) {
+    const settings = settingsByGroup.get(group);
+    if (settings.origin) continue;
+    for (const source of group.paths) paths.push({ path: gcodePath(source, settings.reverse, mirror, origin), width: settings.size, depth: settings.final });
+  }
+  if (paths.length) {
+    const minDepth = Math.min(...paths.map((entry) => entry.depth));
+    const maxDepth = Math.max(...paths.map((entry) => entry.depth));
+    for (const entry of paths) entry.color = depthColor(entry.depth, minDepth, maxDepth);
+    paths.sort((a, b) => b.depth - a.depth);
+  }
+  const circles = [];
+  const drillMirror = $('#drill-mirror').checked;
+  for (const row of $('#drill-tools-body').querySelectorAll('tr[data-file-id]')) {
+    const file = loadedDrillFiles.find((item) => item.id === Number(row.dataset.fileId));
+    const tool = file?.tools.find((item) => item.fileTool === Number(row.dataset.fileTool));
+    if (!tool) continue;
+    const diameter = Number(row.querySelector('[data-field="preview-diameter"]').value);
+    for (const hole of tool.holes) circles.push({ x: drillMirror ? -hole.x : hole.x, y: hole.y, diameter });
+  }
+  return { paths, circles };
+}
+function depthColor(depth, minDepth, maxDepth) {
+  const shallow = [0xa9, 0xd1, 0x92];
+  const deep = [0x32, 0x57, 0x1d];
+  const t = maxDepth === minDepth ? 0 : (maxDepth - depth) / (maxDepth - minDepth);
+  const channels = shallow.map((value, index) => Math.round(value + (deep[index] - value) * t));
+  return `#${channels.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+}
+function previewBounds(paths, circles) {
+  const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  const add = (x, y) => {
+    bounds.minX = Math.min(bounds.minX, x); bounds.minY = Math.min(bounds.minY, y);
+    bounds.maxX = Math.max(bounds.maxX, x); bounds.maxY = Math.max(bounds.maxY, y);
+  };
+  for (const { path, width } of paths) {
+    for (const segment of path.segments) {
+      add(segment.from.x, -segment.from.y); add(segment.to.x, -segment.to.y);
+      if (segment.type === 'arc') {
+        const start = Math.atan2(segment.from.y - segment.center.y, segment.from.x - segment.center.x);
+        for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+          if (angleWithin(angle, start, segment.sweep)) add(segment.center.x + segment.radius * Math.cos(angle), -(segment.center.y + segment.radius * Math.sin(angle)));
+        }
+      }
+    }
+  }
+  for (const circle of circles) {
+    const radius = circle.diameter / 2, y = -circle.y;
+    add(circle.x - radius, y - radius); add(circle.x + radius, y + radius);
+  }
+  add(-1, 0); add(1, 0); add(0, -1); add(0, 1);
+  const maxStroke = Math.max(0.2, ...paths.map((entry) => entry.width), 0.1);
+  const padding = maxStroke / 2 + 2;
+  bounds.minX -= padding; bounds.minY -= padding; bounds.maxX += padding; bounds.maxY += padding;
+  return { x: bounds.minX, y: bounds.minY, width: bounds.maxX - bounds.minX, height: bounds.maxY - bounds.minY };
+}
+function setPreviewView(view) {
+  previewView = { ...view };
+  $('#preview-svg').setAttribute('viewBox', `${previewView.x} ${previewView.y} ${previewView.width} ${previewView.height}`);
+}
+function renderBoardPreview() {
+  const { paths, circles } = collectPreviewGeometry();
+  const view = previewBounds(paths, circles);
+  previewBaseView = { ...view };
+  setPreviewView(view);
+  const svg = $('#preview-svg');
+  svg.replaceChildren();
+  const ns = 'http://www.w3.org/2000/svg';
+  const element = (name, attributes) => {
+    const node = document.createElementNS(ns, name);
+    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
+    return node;
+  };
+  svg.append(element('rect', { x: view.x, y: view.y, width: view.width, height: view.height, fill: '#f5d082' }));
+  for (const { path, width, color } of paths) {
+    svg.append(element('path', { d: previewPathData(path), fill: 'none', stroke: color, 'stroke-width': width, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+  }
+  for (const circle of circles) {
+    const x = circle.x, y = -circle.y, radius = circle.diameter / 2;
+    svg.append(element('circle', { cx: x, cy: y, r: radius, fill: '#7a7580' }));
+    svg.append(element('path', { d: `M ${gc(x - radius)} ${gc(y)} L ${gc(x + radius)} ${gc(y)} M ${gc(x)} ${gc(y - radius)} L ${gc(x)} ${gc(y + radius)}`, fill: 'none', stroke: '#ffffff', 'stroke-width': 0.1, 'stroke-linecap': 'round' }));
+  }
+  svg.append(element('path', { d: 'M -1 0 L 1 0 M 0 -1 L 0 1', fill: 'none', stroke: '#ff0000', 'stroke-width': 0.2, 'stroke-linecap': 'round' }));
+  $('#preview-panel').hidden = false;
+}
+function previewScale() {
+  const rect = $('#preview-svg').getBoundingClientRect();
+  return Math.min(rect.width / previewView.width, rect.height / previewView.height);
+}
+function previewPointAt(clientX, clientY) {
+  const rect = $('#preview-svg').getBoundingClientRect();
+  const scale = previewScale();
+  const offsetX = (rect.width - previewView.width * scale) / 2;
+  const offsetY = (rect.height - previewView.height * scale) / 2;
+  return { x: previewView.x + (clientX - rect.left - offsetX) / scale, y: previewView.y + (clientY - rect.top - offsetY) / scale };
+}
+function setupPreviewNavigation() {
+  const svg = $('#preview-svg');
+  svg.addEventListener('wheel', (event) => {
+    if (!previewView) return;
+    event.preventDefault();
+    const focus = previewPointAt(event.clientX, event.clientY);
+    const fractionX = Math.max(0, Math.min(1, (focus.x - previewView.x) / previewView.width));
+    const fractionY = Math.max(0, Math.min(1, (focus.y - previewView.y) / previewView.height));
+    const factor = event.deltaY < 0 ? 0.85 : 1.15;
+    const width = Math.max(previewBaseView.width / 1000, Math.min(previewBaseView.width * 100, previewView.width * factor));
+    const height = Math.max(previewBaseView.height / 1000, Math.min(previewBaseView.height * 100, previewView.height * factor));
+    setPreviewView({ x: focus.x - fractionX * width, y: focus.y - fractionY * height, width, height });
+  }, { passive: false });
+  svg.addEventListener('pointerdown', (event) => {
+    if (!previewView || event.button !== 0) return;
+    svg.setPointerCapture(event.pointerId);
+    previewPointer = { id: event.pointerId, x: event.clientX, y: event.clientY, view: { ...previewView } };
+    svg.classList.add('panning');
+  });
+  svg.addEventListener('pointermove', (event) => {
+    if (!previewPointer || previewPointer.id !== event.pointerId) return;
+    const rect = svg.getBoundingClientRect();
+    const scale = Math.min(rect.width / previewPointer.view.width, rect.height / previewPointer.view.height);
+    setPreviewView({ ...previewPointer.view, x: previewPointer.view.x - (event.clientX - previewPointer.x) / scale, y: previewPointer.view.y - (event.clientY - previewPointer.y) / scale });
+  });
+  const endPan = (event) => {
+    if (previewPointer?.id !== event.pointerId) return;
+    previewPointer = null; svg.classList.remove('panning');
+  };
+  svg.addEventListener('pointerup', endPan);
+  svg.addEventListener('pointercancel', endPan);
+  $('#preview-reset').addEventListener('click', () => { if (previewBaseView) setPreviewView(previewBaseView); });
 }
 
 function showOutputs(files) {
@@ -565,7 +1039,8 @@ function showOutputs(files) {
     const blob = new Blob([file.content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     outputUrls.push(url);
-    const link = document.createElement('a'); link.href = url; link.download = `tool-${file.tool}.gcode`; link.textContent = `Download tool-${file.tool}.gcode`;
+    const filename = file.filename || `tool-${file.tool}.gcode`;
+    const link = document.createElement('a'); link.href = url; link.download = filename; link.textContent = `Download ${filename}`;
     link.style.color = 'inherit'; link.style.fontWeight = '700';
     li.append(link, document.createTextNode(` · ${file.content.split('\n').length - 1} lines`)); list.append(li);
   }
@@ -575,6 +1050,7 @@ async function loadFile(file) {
   if (!file) return;
   $('#status').textContent = `Reading ${file.name}…`;
   $('#outputs-panel').hidden = true;
+  $('#preview-panel').hidden = true;
   try {
     const result = readSvg(await file.text());
     loadedGroups = result.groups;
@@ -584,6 +1060,7 @@ async function loadFile(file) {
     if (result.groups.length) problemMessages.unshift({ type: 'success', text: `Loaded ${result.groups.reduce((n, group) => n + group.paths.length, 0)} supported path(s) from ${file.name}.` });
     setMessages(problemMessages);
     renderGroups();
+    saveConfiguration();
     $('#status').textContent = result.groups.length ? 'Review the parameters; Origin is optional and defaults to (0, 0).' : 'No usable paths found.';
   } catch (error) {
     loadedGroups = []; loadedName = '';
@@ -593,6 +1070,55 @@ async function loadFile(file) {
   }
 }
 
+async function loadDrillFiles(files) {
+  $('#outputs-panel').hidden = true;
+  $('#preview-panel').hidden = true;
+  for (const file of files) {
+    try {
+      const parsed = parseExcellon(await file.text());
+      loadedDrillFiles.push({ id: nextDrillFileId++, name: file.name, tools: parsed.tools });
+      appendMessage({ type: 'success', text: `Loaded ${parsed.tools.reduce((sum, tool) => sum + tool.holes.length, 0)} holes from ${file.name}.` });
+      if (parsed.warning) appendMessage({ type: 'warning', text: `${file.name}: ${parsed.warning}` });
+    } catch (error) {
+      appendMessage({ type: 'error', text: `${file.name}: ${error.message}` });
+    }
+  }
+  renderDrillFiles();
+  saveConfiguration();
+  $('#status').textContent = loadedDrillFiles.length ? 'Review drill settings; Generate will create files for both loaded workflows.' : 'No valid drill files loaded.';
+}
+
+loadStoredConfig();
+applyGlobalConfig();
+
+$('#download-config').addEventListener('click', () => {
+  const saved = saveConfiguration();
+  const blob = new Blob([`${JSON.stringify(rememberedConfig, null, 2)}\n`], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a'); link.href = url; link.download = 'cucut-config.json'; link.hidden = true;
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  appendMessage({ type: saved ? 'success' : 'warning', text: saved ? 'Downloaded current configuration.' : 'Downloaded configuration; browser storage is unavailable.' });
+});
+$('#upload-config-button').addEventListener('click', () => $('#config-file-input').click());
+$('#config-file-input').addEventListener('change', async (event) => {
+  const file = event.target.files[0]; event.target.value = '';
+  if (!file) return;
+  try {
+    rememberedConfig = normalizeConfig(JSON.parse(await file.text()));
+    applyGlobalConfig();
+    renderGroups();
+    renderDrillFiles();
+    saveConfiguration();
+    $('#outputs-panel').hidden = true;
+    $('#preview-panel').hidden = true;
+    setMessages([{ type: 'success', text: `Loaded configuration from ${file.name}. Matching settings were applied to loaded files.` }]);
+    $('#status').textContent = `Configuration loaded from ${file.name}.`;
+  } catch (error) {
+    appendMessage({ type: 'error', text: `Could not load configuration: ${error.message}` });
+  }
+});
+
 $('#browse-button').addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('click', (event) => { if (event.target === dropZone || event.target.tagName === 'STRONG' || event.target.tagName === 'SPAN') fileInput.click(); });
 dropZone.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); fileInput.click(); } });
@@ -600,24 +1126,87 @@ fileInput.addEventListener('change', () => loadFile(fileInput.files[0]));
 for (const eventName of ['dragenter', 'dragover']) dropZone.addEventListener(eventName, (event) => { event.preventDefault(); dropZone.classList.add('dragging'); });
 for (const eventName of ['dragleave', 'drop']) dropZone.addEventListener(eventName, (event) => { event.preventDefault(); dropZone.classList.remove('dragging'); });
 dropZone.addEventListener('drop', (event) => loadFile(event.dataTransfer.files[0]));
+const drillFileInput = $('#drill-file-input');
+const drillDropZone = $('#drill-drop-zone');
+$('#drill-browse-button').addEventListener('click', () => drillFileInput.click());
+drillDropZone.addEventListener('click', (event) => { if (event.target === drillDropZone || event.target.tagName === 'STRONG' || event.target.tagName === 'SPAN') drillFileInput.click(); });
+drillDropZone.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); drillFileInput.click(); } });
+drillFileInput.addEventListener('change', () => { const files = [...drillFileInput.files]; drillFileInput.value = ''; loadDrillFiles(files); });
+for (const eventName of ['dragenter', 'dragover']) drillDropZone.addEventListener(eventName, (event) => { event.preventDefault(); drillDropZone.classList.add('dragging'); });
+for (const eventName of ['dragleave', 'drop']) drillDropZone.addEventListener(eventName, (event) => { event.preventDefault(); drillDropZone.classList.remove('dragging'); });
+drillDropZone.addEventListener('drop', (event) => loadDrillFiles([...event.dataTransfer.files]));
+$('#drill-files').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-remove-drill]');
+  if (!button) return;
+  const file = loadedDrillFiles.find((item) => item.id === Number(button.dataset.removeDrill));
+  loadedDrillFiles = loadedDrillFiles.filter((item) => item.id !== Number(button.dataset.removeDrill));
+  $('#outputs-panel').hidden = true;
+  $('#preview-panel').hidden = true;
+  renderDrillFiles();
+  saveConfiguration();
+  appendMessage({ type: 'warning', text: `Removed ${file?.name || 'drill file'}.` });
+  $('#status').textContent = 'Drill file removed.';
+});
 $('#sample-button').addEventListener('click', async () => {
+  const button = $('#sample-button');
+  button.disabled = true;
   try {
-    const response = await fetch('../../pcb.svg');
-    if (!response.ok) throw new Error(`Could not read pcb.svg (${response.status}).`);
-    loadFile(new File([await response.text()], 'pcb.svg', { type: 'image/svg+xml' }));
+    const directoryUrl = new URL('data/', document.baseURI);
+    const listing = await fetch(directoryUrl);
+    if (!listing.ok) throw new Error(`Could not read data/ directory (${listing.status}).`);
+    const listingDocument = new DOMParser().parseFromString(await listing.text(), 'text/html');
+    const files = [...listingDocument.querySelectorAll('a[href]')].map((anchor) => {
+      const url = new URL(anchor.getAttribute('href'), listing.url || directoryUrl);
+      return { url, name: decodeURIComponent(url.pathname.split('/').pop()) };
+    }).filter((file) => file.url.origin === directoryUrl.origin && file.url.pathname.startsWith(directoryUrl.pathname));
+    const svgFiles = files.filter((file) => file.name.toLowerCase().endsWith('.svg'));
+    const drillFiles = files.filter((file) => file.name.toLowerCase().endsWith('.drl'));
+    svgFiles.sort((a, b) => Number(b.name.toLowerCase() === 'pcb.svg') - Number(a.name.toLowerCase() === 'pcb.svg') || a.name.localeCompare(b.name));
+    if (!svgFiles.length && !drillFiles.length) throw new Error('No .svg or .drl links found in the data/ directory listing.');
+    if (svgFiles.length) {
+      const response = await fetch(svgFiles[0].url);
+      if (!response.ok) throw new Error(`Could not read ${svgFiles[0].name} (${response.status}).`);
+      await loadFile(new File([await response.blob()], svgFiles[0].name, { type: 'image/svg+xml' }));
+    }
+    const existingNames = new Set(loadedDrillFiles.map((file) => file.name));
+    const newDrills = drillFiles.filter((file) => !existingNames.has(file.name));
+    const drillInputs = await Promise.all(newDrills.map(async (file) => {
+      const response = await fetch(file.url);
+      if (!response.ok) throw new Error(`Could not read ${file.name} (${response.status}).`);
+      return new File([await response.blob()], file.name, { type: 'text/plain' });
+    }));
+    await loadDrillFiles(drillInputs);
+    $('#status').textContent = `Loaded ${svgFiles.length ? 'SVG' : 'no SVG'} and ${drillInputs.length} new drill file(s) from data/.`;
+    appendMessage({ type: 'success', text: `Loaded files from the data/ directory listing.` });
   } catch (error) {
-    setMessages([{ type: 'warning', text: `${error.message} Open this page through a local web server, or select pcb.svg using Browse files.` }]);
+    appendMessage({ type: 'error', text: `Could not load data files: ${error.message}` });
+    $('#status').textContent = 'Could not load files from data/.';
+  } finally {
+    button.disabled = false;
   }
 });
-groupsBody.addEventListener('input', updateValidation);
-groupsBody.addEventListener('change', updateValidation);
-$('#rapid-height').addEventListener('input', updateValidation);
-$('#feed-height').addEventListener('input', updateValidation);
+groupsBody.addEventListener('input', validateAndSaveSettings);
+groupsBody.addEventListener('change', validateAndSaveSettings);
+$('#rapid-height').addEventListener('input', validateAndSaveSettings);
+$('#feed-height').addEventListener('input', validateAndSaveSettings);
+$('#mirror').addEventListener('change', validateAndSaveSettings);
+for (const selector of ['#drill-rapid-height', '#drill-feed-height', '#drill-depth']) $(selector).addEventListener('input', validateAndSaveSettings);
+$('#drill-mirror').addEventListener('change', validateAndSaveSettings);
+$('#drill-tools-body').addEventListener('input', validateAndSaveSettings);
+$('#drill-tools-body').addEventListener('change', validateAndSaveSettings);
+setupPreviewNavigation();
 $('#generate-button').addEventListener('click', () => {
+  $('#preview-panel').hidden = true;
   try {
-    const files = generateFiles(); showOutputs(files);
-    $('#status').textContent = `Generated ${files.length} G-code file(s). Use the download links below.`;
-    setMessages([{ type: 'success', text: `Generated ${files.length} file(s). Origin groups, if selected, were excluded; otherwise coordinates are relative to (0, 0).` }]);
+    const files = [
+      ...(loadedGroups.length ? generateFiles() : []),
+      ...(loadedDrillFiles.length ? generateDrillFiles() : []),
+    ];
+    if (!files.length) throw new Error('No output paths or drill holes remain.');
+    showOutputs(files);
+    renderBoardPreview();
+    $('#status').textContent = `Generated ${files.length} G-code file(s). Use the preview and download links below.`;
+    setMessages([{ type: 'success', text: `Generated ${files.length} file(s). SVG Origin groups, if selected, were excluded.` }]);
   } catch (error) {
     $('#status').textContent = 'G-code was not generated.';
     setMessages([{ type: 'error', text: error.message }]);
