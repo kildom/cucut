@@ -325,7 +325,7 @@ interface EdtCommand {
   bbox?: PixelRectangle;
 }
 
-interface LabelerResponse {
+interface EdtResponse {
   // Raster containing distances from detected objects. The same size as bbox (if provided) or input bitmap.
   distance: Raster<float>;
 }

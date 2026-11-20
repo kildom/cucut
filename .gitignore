@@ -4,5 +4,6 @@
 /node_modules/
 /_tmp/*
 !/_tmp/test-cli.py
+!/_tmp/process-pcb.py
 !/_tmp/two-sources-B_Cu.pdf
 !/_tmp/two-sources-Edge_Cuts.pdf
